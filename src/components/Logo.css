@@ -1,0 +1,79 @@
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo--centered {
+  flex-direction: column;
+  text-align: center;
+  gap: 8px;
+}
+
+.logo__mark {
+  flex-shrink: 0;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(90, 100, 255, 0.28));
+}
+
+.logo--sm .logo__mark {
+  width: 40px;
+  height: 40px;
+}
+
+.logo--md .logo__mark {
+  width: 48px;
+  height: 48px;
+}
+
+.logo--lg .logo__mark {
+  width: 68px;
+  height: 68px;
+}
+
+.logo--centered .logo__mark {
+  width: 78px;
+  height: 78px;
+}
+
+.logo__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.logo--centered .logo__text {
+  align-items: center;
+}
+
+.logo__name {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.logo--sm .logo__name {
+  font-size: 1.15rem;
+}
+
+.logo--md .logo__name {
+  font-size: 1.35rem;
+}
+
+.logo--lg .logo__name,
+.logo--centered .logo__name {
+  font-size: 1.75rem;
+}
+
+.logo__tagline {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  letter-spacing: 0.01em;
+}
+
+.logo--centered .logo__tagline {
+  font-size: 0.85rem;
+}

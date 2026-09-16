@@ -1,0 +1,103 @@
+.dash {
+  position: relative;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  padding: 18px 22px 36px;
+}
+
+.dash__bg {
+  position: fixed;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.04);
+  z-index: 0;
+}
+
+.dash__veil {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 15% 10%, rgba(255, 255, 255, 0.35), transparent 40%),
+    radial-gradient(ellipse at 85% 15%, rgba(200, 180, 255, 0.22), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(230, 225, 250, 0.28));
+}
+
+.dash__frame {
+  position: relative;
+  z-index: 1;
+  width: min(1160px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dash__grid {
+  display: grid;
+  grid-template-columns: 1.65fr 1fr;
+  grid-template-areas:
+    'next schedule'
+    'homework chat';
+  gap: 14px;
+  align-items: start;
+}
+
+.dash__grid > *:nth-child(1) {
+  grid-area: next;
+  animation: cardIn 0.55s ease both;
+}
+
+.dash__grid > *:nth-child(2) {
+  grid-area: schedule;
+  animation: cardIn 0.55s ease 0.05s both;
+}
+
+.dash__grid > *:nth-child(3) {
+  grid-area: homework;
+  animation: cardIn 0.55s ease 0.1s both;
+}
+
+.dash__grid > *:nth-child(4) {
+  grid-area: chat;
+  animation: cardIn 0.55s ease 0.15s both;
+  align-self: end;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .dash {
+    padding: 14px 12px 28px;
+  }
+
+  .dash__grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'next'
+      'schedule'
+      'homework'
+      'chat';
+  }
+
+  .dash__grid > *:nth-child(4) {
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .dash {
+    padding: 10px 10px 96px;
+  }
+}
