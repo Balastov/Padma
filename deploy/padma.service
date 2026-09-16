@@ -1,0 +1,22 @@
+[Unit]
+Description=Padma learning platform
+After=network.target
+
+[Service]
+Type=simple
+User=padma
+Group=padma
+WorkingDirectory=/var/www/padma/current
+EnvironmentFile=/etc/padma/padma.env
+ExecStart=/opt/padma/node/bin/node server/index.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/padma
+
+[Install]
+WantedBy=multi-user.target

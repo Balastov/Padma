@@ -1,0 +1,59 @@
+limit_req_zone $binary_remote_addr zone=padma_login:10m rate=5r/m;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name padma.ru www.padma.ru;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/padma/acme;
+        try_files $uri =404;
+    }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    ssl_certificate /etc/letsencrypt/live/padma.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/padma.ru/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_name padma.ru www.padma.ru;
+    root /var/www/padma/current/dist;
+    index index.html;
+    access_log /var/log/nginx/padma.access.log;
+    error_log /var/log/nginx/padma.error.log;
+    client_max_body_size 15m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    add_header X-Frame-Options DENY always;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/padma/acme;
+        try_files $uri =404;
+    }
+    location ~ /\. { deny all; }
+    location = /api/login {
+        limit_req zone=padma_login burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+    location /assets/ {
+        try_files $uri =404;
+        expires 1y;
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy same-origin always;
+        add_header X-Frame-Options DENY always;
+    }
+}

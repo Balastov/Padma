@@ -116,6 +116,10 @@ export function createApp({
         })
         return res.end(req.method === 'HEAD' ? undefined : content)
       }
+      if (path === '/api/health' && req.method === 'GET') {
+        db.prepare('SELECT 1').get()
+        return send(200, { ok: true })
+      }
       if (
         !['GET', 'HEAD'].includes(req.method) &&
         !origins.includes(req.headers.origin)

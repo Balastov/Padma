@@ -61,6 +61,7 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     return res.cookie.split(';')[0]
   }
   try {
+    assert.deepEqual((await request('/health')).body, { ok: true })
     assert.equal((await request('/users')).status, 401)
     assert.equal(
       (
