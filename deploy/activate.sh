@@ -13,7 +13,7 @@ backup=/var/backups/padma/$stamp
 install -d -m 700 "$backup"
 cp /etc/nginx/sites-available/padma "$backup/nginx.conf"
 had_service=false
-if test -f /etc/systemd/system/padma.service; then
+if systemctl is-active --quiet padma.service; then
   had_service=true
   cp /etc/systemd/system/padma.service "$backup/padma.service"
 fi
@@ -34,6 +34,11 @@ rollback() {
   exit 1
 }
 trap rollback ERR
+# Keep the old static Nginx workers functional during the first configuration reload.
+for asset in "$release"/dist/*; do
+  name=$(basename "$asset")
+  if ! test -e "$release/$name"; then ln -s "dist/$name" "$release/$name"; fi
+done
 install -d -m 750 /etc/padma
 if ! test -f /etc/padma/padma.env; then
   install -m 600 "$release/deploy/padma.env.example" /etc/padma/padma.env
@@ -56,6 +61,14 @@ curl -fsS http://127.0.0.1:3001/api/health >/dev/null
 install -m 644 "$release/deploy/padma.nginx" /etc/nginx/sites-available/padma
 nginx -t
 systemctl reload nginx
-curl -fsS --resolve www.padma.ru:443:127.0.0.1 https://www.padma.ru/api/health >/dev/null
+https_ready=false
+for attempt in {1..20}; do
+  if response=$(curl -fsS --max-time 5 --resolve www.padma.ru:443:127.0.0.1 https://www.padma.ru/api/health) && [[ "$response" == '{"ok":true}' ]]; then
+    https_ready=true
+    break
+  fi
+  sleep 1
+done
+"$https_ready"
 systemctl enable --now padma-backup.timer
 echo "Padma active: $release (previous: $previous)"

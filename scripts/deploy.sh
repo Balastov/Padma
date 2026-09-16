@@ -13,7 +13,7 @@ revision=$(git rev-parse --short HEAD)
 release="$(date -u +%Y%m%dT%H%M%SZ)-$revision"
 archive=$(mktemp /tmp/padma-release.XXXXXX.tar.gz)
 trap 'rm -f "$archive"' EXIT
-COPYFILE_DISABLE=1 tar -czf "$archive" dist server scripts/backup.mjs deploy package.json src/api.ts src/calendarLayout.ts
+COPYFILE_DISABLE=1 tar --format=ustar -czf "$archive" dist server scripts/backup.mjs deploy package.json src/api.ts src/calendarLayout.ts
 ssh_args=(-o BatchMode=yes -i "${PADMA_SSH_KEY:-$HOME/.ssh/id_ed25519}")
 remote="${PADMA_SSH_TARGET:-user1@176.108.246.144}"
 scp "${ssh_args[@]}" "$archive" "$remote:/tmp/padma-$release.tar.gz"
