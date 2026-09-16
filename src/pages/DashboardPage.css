@@ -1,103 +1,245 @@
-.dash {
-  position: relative;
-  min-height: 100dvh;
-  overflow-x: hidden;
-  padding: 18px 22px 36px;
+.student-page {
+  max-width: 1440px;
+  margin: auto;
+  padding: 24px 32px 48px;
 }
-
-.dash__bg {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  transform: scale(1.04);
-  z-index: 0;
+.student-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 28px;
 }
-
-.dash__veil {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse at 15% 10%, rgba(255, 255, 255, 0.35), transparent 40%),
-    radial-gradient(ellipse at 85% 15%, rgba(200, 180, 255, 0.22), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(230, 225, 250, 0.28));
+.student-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(320px, 1fr);
+  gap: 20px;
 }
-
-.dash__frame {
-  position: relative;
-  z-index: 1;
-  width: min(1160px, 100%);
-  margin: 0 auto;
+.student-main,
+.student-aside {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  min-width: 0;
 }
-
-.dash__grid {
+.student-next {
+  padding: 24px;
+  display: flex;
+  gap: 24px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(100deg, #ffffffd9 48%, #ffffff88),
+    url('../assets/santorini.jpg') right center/cover;
+}
+.student-next__portrait {
+  width: 160px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.student-next__portrait img {
+  width: 160px;
+  height: 200px;
+  aspect-ratio: 4/5;
+  object-fit: cover;
+  border-radius: 20px;
+  border: 2px solid #ffffffda;
+}
+.student-next__content {
+  min-width: 0;
+  position: relative;
+}
+.student-next h1 {
+  font-size: 28px;
+  margin: 12px 0 18px;
+  line-height: 1.15;
+}
+.student-next__teacher {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+}
+.student-next .button-primary {
+  font-size: 15px;
+  padding: 0 16px;
+}
+.student-inspiration {
+  min-height: 380px;
+  background:
+    linear-gradient(90deg, #10223c00, #10182a18),
+    url('../assets/student-journey.png') center/cover;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid white;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 40px;
+}
+.student-inspiration > div {
+  padding: 20px;
+  border-radius: 16px;
+  background: #ffffffb8;
+  text-align: right;
+}
+.student-inspiration h2 {
+  font: 500 32px/1.1 var(--font-editorial);
+  margin: 0 0 8px;
+}
+.student-inspiration p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.student-schedule {
+  padding: 24px;
+}
+.student-schedule h2 {
+  font-size: 21px;
+}
+.student-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.student-days {
   display: grid;
-  grid-template-columns: 1.65fr 1fr;
-  grid-template-areas:
-    'next schedule'
-    'homework chat';
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin: 10px 0 18px;
+}
+.student-days button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  min-height: 64px;
+  padding: 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.student-days button.is-active {
+  background: #e8e5fc;
+  color: #3d39b4;
+  box-shadow: inset 0 0 0 1px #c6c1f2;
+}
+.student-schedule__lesson {
+  display: flex;
+  align-items: center;
   gap: 14px;
-  align-items: start;
+  padding: 20px 0;
+  border-top: 1px solid #525e8a14;
 }
-
-.dash__grid > *:nth-child(1) {
-  grid-area: next;
-  animation: cardIn 0.55s ease both;
+.student-schedule__lesson small {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-secondary);
 }
-
-.dash__grid > *:nth-child(2) {
-  grid-area: schedule;
-  animation: cardIn 0.55s ease 0.05s both;
+.status-dot {
+  height: 9px;
+  width: 9px;
+  background: #8055f4;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
-
-.dash__grid > *:nth-child(3) {
-  grid-area: homework;
-  animation: cardIn 0.55s ease 0.1s both;
+.student-homework .hw {
+  border-radius: 24px;
+  padding: 24px;
 }
-
-.dash__grid > *:nth-child(4) {
-  grid-area: chat;
-  animation: cardIn 0.55s ease 0.15s both;
-  align-self: end;
+.student-homework .hw__title h2 {
+  font-size: 22px;
 }
-
-@keyframes cardIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
+.student-homework .hw__copy strong {
+  font-size: 16px;
+}
+.student-homework .hw__copy span {
+  font-size: 14px;
+}
+.student-homework .hw__row {
+  padding: 14px 0;
+}
+.student-homework .hw__deadline {
+  display: none;
+}
+@media (max-width: 1199px) {
+  .student-page {
+    padding: 20px;
   }
-  to {
-    opacity: 1;
-    transform: none;
+  .student-grid {
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  }
+  .student-next {
+    flex-direction: column;
+  }
+  .student-next__portrait {
+    width: 80px;
+  }
+  .student-next__portrait img {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+  }
+  .student-inspiration {
+    padding: 20px;
+    min-height: 320px;
   }
 }
-
-@media (max-width: 980px) {
-  .dash {
-    padding: 14px 12px 28px;
+@media (max-width: 767px) {
+  .student-page {
+    padding: 20px 16px 32px;
   }
-
-  .dash__grid {
+  .student-header .logo span {
+    display: none;
+  }
+  .student-grid {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      'next'
-      'schedule'
-      'homework'
-      'chat';
   }
-
-  .dash__grid > *:nth-child(4) {
-    align-self: stretch;
+  .student-next {
+    padding: 20px;
+    gap: 16px;
+  }
+  .student-next h1 {
+    font-size: 25px;
+  }
+  .student-inspiration {
+    min-height: 270px;
+  }
+  .student-inspiration h2 {
+    font-size: 27px;
+  }
+  .student-homework .hw {
+    padding: 18px;
+  }
+  .student-homework .hw__copy span {
+    white-space: normal;
+  }
+  .student-schedule {
+    padding: 20px;
+  }
+  .student-next .button-primary {
+    width: 100%;
+  }
+  .student-main {
+    display: contents;
+  }
+  .student-next {
+    order: 0;
+  }
+  .student-aside {
+    order: 1;
+  }
+  .student-inspiration {
+    order: 2;
+  }
+  .student-homework {
+    order: 3;
   }
 }
 
-@media (max-width: 640px) {
-  .dash {
-    padding: 10px 10px 96px;
-  }
-}
+.student-next.glass-panel { background: linear-gradient(100deg, #ffffffed 48%, #ffffff88), url('../assets/santorini.jpg') right center/cover; }

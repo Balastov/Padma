@@ -1,135 +1,130 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Eye, EyeOff, Lock, Mail, Users } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react'
+import { api } from '../api'
+import type { User } from '../api'
 import Logo from '../components/Logo'
-import bgLogin from '../assets/bg-login.jpg'
-import bgMobile from '../assets/bg-mobile.jpg'
-import loginPortrait from '../assets/login-portrait.jpg'
-import lakeCard from '../assets/lake-card.jpg'
+import loginPortrait from '../assets/login-portrait-v3.png'
 import './LoginPage.css'
-
-export default function LoginPage() {
-  const navigate = useNavigate()
-  const [showPassword, setShowPassword] = useState(false)
-  const [login, setLogin] = useState('')
+export default function LoginPage({
+  onLogin,
+}: {
+  onLogin: (user: User) => void
+}) {
+  const [show, setShow] = useState(false)
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    navigate('/dashboard')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [help, setHelp] = useState('')
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      onLogin(await api<User>('/login', 'POST', { email, password }))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
-
   return (
-    <div className="login">
-      <div className="login__bg login__bg--desktop" style={{ backgroundImage: `url(${bgLogin})` }} />
-      <div className="login__bg login__bg--mobile" style={{ backgroundImage: `url(${bgMobile})` }} />
-      <div className="login__veil" />
-
-      <p className="login__float login__float--quote">Лучшие версии нас рождаются в диалоге ♡</p>
-      <p className="login__float login__float--right">
-        БОЛЬШЕ, ЧЕМ УРОКИ.
-        <br />
-        БОЛЬШЕ О ВАС
-      </p>
-      <p className="login__float login__float--bottom">ЗНАНИЯ СОЕДИНЯЮТ ЛЮДЕЙ</p>
-
-      <div className="login__shell">
+    <main className="login">
+      <div className="login__shell glass-panel">
         <aside className="login__visual">
-          <img src={loginPortrait} alt="Учёба с Padma" className="login__portrait" />
+          <img
+            src={loginPortrait}
+            alt="Девушка за учебным столом с книгами и кофе"
+          />
         </aside>
-
         <section className="login__panel">
-          <div className="login__brand login__brand--desktop">
-            <Logo size="lg" centered />
-          </div>
-          <div className="login__brand login__brand--mobile">
-            <Logo size="lg" centered />
-          </div>
-
+          <Logo size="lg" centered />
           <div className="login__intro">
-            <h1>С возвращением.</h1>
-            <p className="login__intro-desktop">
-              Здесь — ваши уроки, практика и всё, что понадобится между встречами.
-            </p>
-            <p className="login__intro-mobile">Войдите в своё пространство Padma.</p>
+            <h1>Добро пожаловать.</h1>
+            <p>Войдите в своё пространство Padma.</p>
           </div>
-
-          <form className="login__form" onSubmit={handleSubmit}>
-            <label className="login__field">
-              <Mail size={18} strokeWidth={1.7} />
-              <input
-                type="text"
-                placeholder="Email или телефон"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                autoComplete="username"
-              />
+          <form onSubmit={submit} className="form-stack">
+            <label className="field">
+              <span>Email</span>
+              <span className="input-icon">
+                <Mail size={20} />
+                <input
+                  required
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Ваш email"
+                />
+              </span>
             </label>
-
-            <label className="login__field">
-              <Lock size={18} strokeWidth={1.7} />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Пароль"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
+            <label className="field">
+              <span>Пароль</span>
+              <span className="input-icon">
+                <LockKeyhole size={20} />
+                <input
+                  required
+                  maxLength={128}
+                  type={show ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Ваш пароль"
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setShow(!show)}
+                  aria-label={show ? 'Скрыть пароль' : 'Показать пароль'}
+                >
+                  {show ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </span>
+            </label>
+            <div className="login__links">
               <button
                 type="button"
-                className="login__eye"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                onClick={() =>
+                  setHelp(
+                    'Для смены пароля обратитесь к вашему учителю или администратору Padma.',
+                  )
+                }
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                Забыли пароль?
               </button>
-            </label>
-
-            <div className="login__links">
-              <button type="button">Забыли пароль?</button>
-              <button type="button">Войти по коду</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setHelp(
+                    'Вход по коду пока недоступен. Используйте email и пароль, выданные администратором.',
+                  )
+                }
+              >
+                Войти по коду
+              </button>
             </div>
-
-            <button type="submit" className="login__submit">
-              <span>Войти</span>
-              <span className="login__submit-arrow" aria-hidden>
-                <ArrowRight size={16} strokeWidth={2.4} />
-              </span>
+            {help && (
+              <p className="notice" role="status">
+                {help}
+              </p>
+            )}
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <button disabled={busy} className="button-primary login__submit">
+              {busy ? 'Входим…' : 'Войти'}
+              <ArrowRight size={20} />
             </button>
           </form>
-
-          <div className="login__divider login__divider--desktop">
-            <span>или</span>
-          </div>
-          <div className="login__divider login__divider--mobile">
-            <span>Ещё не занимаетесь?</span>
-          </div>
-
-          <button type="button" className="login__secondary login__secondary--desktop">
-            <span className="login__secondary-icon">
-              <Users size={18} strokeWidth={1.8} />
-            </span>
-            <span>Новый ученик Милады? Обсудить обучение →</span>
-          </button>
-          <button type="button" className="login__secondary login__secondary--mobile">
-            Познакомиться с Милдой →
-          </button>
+          <p className="login__foot">
+            Ваши уроки, общение и маленькие шаги
+            <br />к большим открытиям.
+          </p>
         </section>
       </div>
-
-      <article className="login__carousel">
-        <img src={lakeCard} alt="" />
-        <div className="login__carousel-copy">
-          <p className="login__carousel-en">go at your own pace</p>
-          <p className="login__carousel-ru">идти в своём темпе</p>
-        </div>
-        <div className="login__dots" aria-hidden>
-          <span className="is-active" />
-          <span />
-          <span />
-        </div>
-      </article>
-    </div>
+    </main>
   )
 }

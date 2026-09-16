@@ -4,10 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server/index.mjs",
+    "seed:doc": "node scripts/seed.mjs",
+    "test": "node --test server/*.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.45.0",

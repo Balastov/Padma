@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
+
+# Server database, sessions and uploaded profile photos
+.data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

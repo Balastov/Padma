@@ -1,79 +1,26 @@
 .logo {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.logo--centered {
   flex-direction: column;
-  text-align: center;
-  gap: 8px;
-}
-
-.logo__mark {
+  gap: 6px;
+  align-items: flex-start;
   flex-shrink: 0;
+}
+.logo img {
+  width: 150px;
+  height: auto;
   display: block;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(90, 100, 255, 0.28));
 }
-
-.logo--sm .logo__mark {
-  width: 40px;
-  height: 40px;
+.logo span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
 }
-
-.logo--md .logo__mark {
-  width: 48px;
-  height: 48px;
+.logo--sm img {
+  width: 135px;
 }
-
-.logo--lg .logo__mark {
-  width: 68px;
-  height: 68px;
+.logo--lg img {
+  width: 180px;
 }
-
-.logo--centered .logo__mark {
-  width: 78px;
-  height: 78px;
-}
-
-.logo__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.logo--centered .logo__text {
+.logo--centered {
   align-items: center;
-}
-
-.logo__name {
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  color: var(--text);
-}
-
-.logo--sm .logo__name {
-  font-size: 1.15rem;
-}
-
-.logo--md .logo__name {
-  font-size: 1.35rem;
-}
-
-.logo--lg .logo__name,
-.logo--centered .logo__name {
-  font-size: 1.75rem;
-}
-
-.logo__tagline {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--text-soft);
-  letter-spacing: 0.01em;
-}
-
-.logo--centered .logo__tagline {
-  font-size: 0.85rem;
 }
