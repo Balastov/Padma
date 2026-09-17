@@ -74,4 +74,4 @@ npm run seed:doc -- "/абсолютный/путь/к/документу.docx"
 
 Правила агента: [AGENTS.md](AGENTS.md). Актуальная серверная настройка и проверки: [DEV.md](DEV.md). Решения и ограничения первой версии: [VERSION_ONE.md](VERSION_ONE.md).
 
-Полная версия подготовлена для Ubuntu-сервера www.padma.ru: Node.js, systemd, постоянная SQLite и HTTPS через Nginx. Порядок публикации и резервного копирования — в [DEPLOY.md](DEPLOY.md). Push в main сам по себе не запускает деплой; используется `bash scripts/deploy.sh`.
+Полная версия подготовлена для Ubuntu-сервера www.padma.ru: Node.js, systemd, постоянная SQLite и HTTPS через Nginx. Порядок публикации и резервного копирования — в [DEPLOY.md](DEPLOY.md). Ubuntu проверяет main раз в минуту и автоматически публикует новые коммиты после lint, тестов и сборки. Инструкция управления и отката — в DEPLOY.md.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Padma main for updates every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=10s
+Unit=padma-autodeploy.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Build and deploy Padma main from GitHub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/padma-autodeploy
+TimeoutStartSec=15min
+UMask=0022
+Nice=10
+CPUQuota=100%
+MemoryMax=1500M
