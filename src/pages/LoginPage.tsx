@@ -129,7 +129,7 @@ export default function LoginPage({
                     value={phone}
                     onChange={(e) => onPhoneChange(e.target.value)}
                     placeholder={
-                      foreignPhone ? '+ и цифры' : '+7 (999) 123-45-67'
+                      foreignPhone ? '+ и цифры' : '+7 (9XX) XXX-XX-XX'
                     }
                   />
                 </span>

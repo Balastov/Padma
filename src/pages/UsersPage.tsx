@@ -12,6 +12,14 @@ import {
 import { api, fullName, isManager, roleNames } from '../api'
 import type { Role, User } from '../api'
 import Avatar from '../components/Avatar'
+import {
+  formatForeignPhoneInput,
+  formatRuPhoneInput,
+  isCompleteRuPhone,
+  isValidForeignPhone,
+  looksLikeForeignPhone,
+  normalizePhone,
+} from '../phone'
 
 type Props = {
   user: User
@@ -46,7 +54,7 @@ export default function UsersPage({
     name: '',
     surname: '',
     email: '',
-    phone: '',
+    phone: '+7',
     roles: ['student'],
     teacherId: user.roles.includes('teacher') ? user.id : null,
     photo: '',
@@ -208,9 +216,19 @@ function UserEditor({
 }) {
   const [form, setForm] = useState({
       ...initial,
+      phone: initial.phone
+        ? looksLikeForeignPhone(initial.phone)
+          ? initial.phone
+          : formatRuPhoneInput(initial.phone)
+        : initial.id
+          ? ''
+          : '+7',
       password: '',
       currentPassword: '',
     }),
+    [foreignPhone, setForeignPhone] = useState(
+      looksLikeForeignPhone(initial.phone || ''),
+    ),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [confirm, setConfirm] = useState(false)
@@ -221,22 +239,74 @@ function UserEditor({
     (!profile && initial.roles.every((r) => r === 'student'))
   const field = (key: string, value: unknown) =>
     setForm((prev) => ({ ...prev, [key]: value }))
+  const phoneReady = foreignPhone
+    ? isValidForeignPhone(form.phone || '')
+    : isCompleteRuPhone(form.phone || '')
+  const emailRequired = !phoneReady
+  function onPhoneChange(value: string) {
+    field(
+      'phone',
+      foreignPhone ? formatForeignPhoneInput(value) : formatRuPhoneInput(value),
+    )
+  }
+  function onForeignToggle(checked: boolean) {
+    setForeignPhone(checked)
+    if (checked) {
+      field(
+        'phone',
+        formatForeignPhoneInput((form.phone || '').replace(/\D/g, '') || ''),
+      )
+    } else {
+      field('phone', formatRuPhoneInput(form.phone || '7'))
+    }
+  }
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError('')
     try {
+      const email = form.email.trim()
+      if (!email && !phoneReady) {
+        setError('Укажите email или полный номер телефона')
+        return
+      }
+      if (!foreignPhone && form.phone && form.phone !== '+7' && !phoneReady) {
+        setError('Номер РФ: +7 и 10 цифр, начиная с 9')
+        return
+      }
+      if (foreignPhone && form.phone && !phoneReady) {
+        setError('Укажите номер: только цифры, можно с + в начале')
+        return
+      }
+      const payload = {
+        ...form,
+        email,
+        phone: phoneReady
+          ? normalizePhone(form.phone || '', foreignPhone)
+          : '',
+        foreignPhone,
+      }
       const next = await api<User>(
         profile ? '/profile' : '/users' + (initial.id ? '/' + initial.id : ''),
         initial.id ? 'PATCH' : 'POST',
-        form,
+        payload,
       )
       if (profile && form.password) {
         window.location.assign('/')
         return
       }
       await onSaved(next)
-      setForm({ ...next, password: '', currentPassword: '' })
+      setForm({
+        ...next,
+        phone: next.phone
+          ? looksLikeForeignPhone(next.phone)
+            ? next.phone
+            : formatRuPhoneInput(next.phone)
+          : '+7',
+        password: '',
+        currentPassword: '',
+      })
+      setForeignPhone(looksLikeForeignPhone(next.phone || ''))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -307,37 +377,53 @@ function UserEditor({
             </label>
           </div>
           <label className="field">
-            <span>Email для входа *</span>
+            <span>{emailRequired ? 'Email для входа *' : 'Email для входа'}</span>
             <input
               type="email"
-              required
+              required={emailRequired}
               readOnly={profile}
               value={form.email}
               autoComplete="off"
               onChange={(e) => field('email', e.target.value)}
             />
+            {!emailRequired && (
+              <small>Можно не указывать, если задан телефон для входа.</small>
+            )}
           </label>
           <label className="field">
             <span>Телефон для входа</span>
             <input
               type="tel"
               inputMode="tel"
-              maxLength={20}
               readOnly={profile}
               value={form.phone || ''}
               autoComplete="off"
-              placeholder="+7 900 123-45-67"
-              onChange={(e) => field('phone', e.target.value)}
+              placeholder={
+                foreignPhone ? '+ и цифры' : '+7 (9XX) XXX-XX-XX'
+              }
+              onChange={(e) => onPhoneChange(e.target.value)}
             />
+            {!profile && (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={foreignPhone}
+                  onChange={(e) => onForeignToggle(e.target.checked)}
+                />{' '}
+                У меня иностранный номер телефона
+              </label>
+            )}
             <small>
-              Можно войти по номеру. Для РФ удобно указывать в формате +7…
+              {foreignPhone
+                ? 'Можно войти по номеру. Только цифры, можно с +.'
+                : 'Формат РФ: +7 и 10 цифр, начиная с 9. Можно войти по номеру.'}
             </small>
           </label>
           <label className="field">
             <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
             <input
               type="password"
-              minLength={10}
+              minLength={8}
               maxLength={128}
               required={!initial.id}
               autoComplete="new-password"
@@ -346,7 +432,7 @@ function UserEditor({
               placeholder={
                 initial.id
                   ? 'Оставьте пустым, чтобы сохранить текущий'
-                  : 'Не менее 10 символов'
+                  : 'Не менее 8 символов'
               }
             />
             <small>
@@ -439,7 +525,19 @@ function UserEditor({
               type="button"
               className="button-secondary"
               onClick={() => {
-                setForm({ ...initial, password: '', currentPassword: '' })
+                setForm({
+                  ...initial,
+                  phone: initial.phone
+                    ? looksLikeForeignPhone(initial.phone)
+                      ? initial.phone
+                      : formatRuPhoneInput(initial.phone)
+                    : initial.id
+                      ? ''
+                      : '+7',
+                  password: '',
+                  currentPassword: '',
+                })
+                setForeignPhone(looksLikeForeignPhone(initial.phone || ''))
                 setError('')
               }}
             >

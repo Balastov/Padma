@@ -100,6 +100,15 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     assert.equal(
       (
         await request('/login', 'POST', {
+          phone: '89001234567',
+          password,
+        })
+      ).status,
+      200,
+    )
+    assert.equal(
+      (
+        await request('/login', 'POST', {
           phone: '+79001234567',
           password: 'incorrect',
         })
@@ -155,6 +164,85 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
       teacher,
     )
     assert.equal(created.status, 201)
+    const phoneOnly = await request(
+      '/users',
+      'POST',
+      {
+        name: 'Телефон',
+        surname: 'Только',
+        email: '',
+        phone: '+7 (901) 234-56-78',
+        password: 'password',
+        roles: ['student'],
+        teacherId: 'teacher',
+      },
+      teacher,
+    )
+    assert.equal(phoneOnly.status, 201)
+    assert.equal(phoneOnly.body.email, '')
+    assert.equal(phoneOnly.body.phone, '+79012345678')
+    assert.equal(
+      (
+        await request('/login', 'POST', {
+          phone: '9012345678',
+          password: 'password',
+        })
+      ).status,
+      200,
+    )
+    assert.equal(
+      (
+        await request(
+          '/users',
+          'POST',
+          {
+            name: 'Короткий',
+            email: 'short@example.test',
+            password: 'short',
+            roles: ['student'],
+            teacherId: 'teacher',
+          },
+          teacher,
+        )
+      ).status,
+      400,
+    )
+    assert.equal(
+      (
+        await request(
+          '/users',
+          'POST',
+          {
+            name: 'Без контакта',
+            email: '',
+            phone: '',
+            password: 'password',
+            roles: ['student'],
+            teacherId: 'teacher',
+          },
+          teacher,
+        )
+      ).status,
+      400,
+    )
+    assert.equal(
+      (
+        await request(
+          '/users',
+          'POST',
+          {
+            name: 'Не с девятки',
+            email: '',
+            phone: '+7 (801) 234-56-78',
+            password: 'password',
+            roles: ['student'],
+            teacherId: 'teacher',
+          },
+          teacher,
+        )
+      ).status,
+      400,
+    )
     assert.equal(
       (
         await request(

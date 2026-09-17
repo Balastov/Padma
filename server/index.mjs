@@ -14,6 +14,8 @@ import {
   verifyPassword,
   tokenHash,
   normalizePhone,
+  isCompleteRuPhone,
+  isValidForeignPhone,
 } from './store.mjs'
 
 const fail = (status, message) => {
@@ -22,7 +24,8 @@ const fail = (status, message) => {
 const text = (value, max = 200) =>
   typeof value === 'string' ? value.trim().slice(0, max) : ''
 const passwordValid = (value) =>
-  typeof value === 'string' && value.length >= 10 && value.length <= 128
+  typeof value === 'string' && value.length >= 8 && value.length <= 128
+const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 const minutes = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
 export function createApp({
   dbPath = process.env.PADMA_DB || '.data/padma.sqlite',
@@ -203,7 +206,7 @@ export function createApp({
           )
             fail(
               400,
-              'Укажите текущий пароль и новый пароль от 10 до 128 символов',
+              'Укажите текущий пароль и новый пароль от 8 до 128 символов',
             )
           const oldHash = db
             .prepare('SELECT password FROM users WHERE id=?')
@@ -281,13 +284,26 @@ export function createApp({
         const name = text(data.name, 80),
           surname = text(data.surname, 80),
           email = text(data.email).toLowerCase()
-        const phone = normalizePhone(text(data.phone, 32))
+        const foreignPhone = Boolean(data.foreignPhone)
+        const phone = normalizePhone(text(data.phone, 32), foreignPhone)
         const roles = data.roles
         const teacherId = data.teacherId || null
-        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-          fail(400, 'Укажите имя и корректный email')
-        if (phone && !/^\+?\d{8,15}$/.test(phone))
-          fail(400, 'Укажите корректный номер телефона')
+        if (!name) fail(400, 'Укажите имя')
+        if (email && !emailValid(email))
+          fail(400, 'Укажите корректный email')
+        if (phone) {
+          if (foreignPhone) {
+            if (!isValidForeignPhone(phone))
+              fail(400, 'Укажите корректный номер телефона')
+          } else if (!isCompleteRuPhone(phone)) {
+            fail(
+              400,
+              'Укажите номер РФ: +7 и 10 цифр, начиная с 9',
+            )
+          }
+        }
+        if (!email && !phone)
+          fail(400, 'Укажите email или номер телефона')
         if (
           !Array.isArray(roles) ||
           !roles.length ||
@@ -324,7 +340,7 @@ export function createApp({
           fail(400, 'Фото: JPG, PNG или WebP')
         if (photo.length > 1400000) fail(400, 'Фото слишком большое')
         if ((!old || data.password) && !passwordValid(data.password))
-          fail(400, 'Пароль должен содержать от 10 до 128 символов')
+          fail(400, 'Пароль должен содержать от 8 до 128 символов')
         const hash = data.password
           ? await hashPassword(data.password)
           : db.prepare('SELECT password FROM users WHERE id=?').get(id)
