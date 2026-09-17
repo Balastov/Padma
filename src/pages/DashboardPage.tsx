@@ -149,18 +149,16 @@ export default function DashboardPage({
                   {fullName(teacher)}
                 </p>
               )}
-              {next && (
-                <a
-                  className="button-primary"
-                  href={LESSON_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Video size={20} />
-                  Подключиться к уроку
-                  <ChevronRight size={18} />
-                </a>
-              )}
+              <a
+                className="button-primary"
+                href={LESSON_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Video size={20} />
+                Подключиться к уроку
+                <ChevronRight size={18} />
+              </a>
             </div>
           </section>
           <section className="student-inspiration">
