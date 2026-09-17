@@ -13,6 +13,7 @@ import {
   hashPassword,
   verifyPassword,
   tokenHash,
+  normalizePhone,
 } from './store.mjs'
 
 const fail = (status, message) => {
@@ -145,9 +146,16 @@ export function createApp({
         attempts.set(key, attempt)
         if (typeof data.password !== 'string' || data.password.length > 128)
           fail(401, 'Неверный логин или пароль')
-        const row = db
-          .prepare('SELECT * FROM users WHERE email=? AND archived=0')
-          .get(text(data.email).toLowerCase())
+        const email = text(data.email).toLowerCase()
+        const phone = normalizePhone(text(data.phone, 32))
+        if (!email && !phone) fail(401, 'Неверный логин или пароль')
+        const row = email
+          ? db
+              .prepare('SELECT * FROM users WHERE email=? AND archived=0')
+              .get(email)
+          : db
+              .prepare('SELECT * FROM users WHERE phone=? AND archived=0')
+              .get(phone)
         const valid = await verifyPassword(
           data.password,
           row?.password || (await dummyHash),
@@ -273,10 +281,13 @@ export function createApp({
         const name = text(data.name, 80),
           surname = text(data.surname, 80),
           email = text(data.email).toLowerCase()
+        const phone = normalizePhone(text(data.phone, 32))
         const roles = data.roles
         const teacherId = data.teacherId || null
         if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
           fail(400, 'Укажите имя и корректный email')
+        if (phone && !/^\+?\d{8,15}$/.test(phone))
+          fail(400, 'Укажите корректный номер телефона')
         if (
           !Array.isArray(roles) ||
           !roles.length ||
@@ -321,11 +332,12 @@ export function createApp({
         try {
           if (old) {
             db.prepare(
-              'UPDATE users SET name=?,surname=?,email=?,password=?,roles=?,teacherId=?,photo=? WHERE id=?',
+              'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=? WHERE id=?',
             ).run(
               name,
               surname,
               email,
+              phone,
               hash,
               JSON.stringify([...new Set(roles)]),
               teacherId,
@@ -339,12 +351,13 @@ export function createApp({
               db.prepare('DELETE FROM sessions WHERE userId=?').run(id)
           } else
             db.prepare(
-              'INSERT INTO users (id,name,surname,email,password,roles,teacherId,photo) VALUES (?,?,?,?,?,?,?,?)',
+              'INSERT INTO users (id,name,surname,email,phone,password,roles,teacherId,photo) VALUES (?,?,?,?,?,?,?,?,?)',
             ).run(
               id,
               name,
               surname,
               email,
+              phone,
               hash,
               JSON.stringify([...new Set(roles)]),
               teacherId,
@@ -352,7 +365,12 @@ export function createApp({
             )
         } catch (error) {
           if (String(error).includes('UNIQUE'))
-            fail(409, 'Этот email уже используется')
+            fail(
+              409,
+              String(error).includes('phone')
+                ? 'Этот телефон уже используется'
+                : 'Этот email уже используется',
+            )
           throw error
         }
         return send(old ? 200 : 201, getUser(id))

@@ -4,6 +4,7 @@ export type User = {
   name: string
   surname: string
   email: string
+  phone?: string
   roles: Role[]
   teacherId: string | null
   photo: string

@@ -35,7 +35,9 @@ export default function UsersPage({
   const filtered = users.filter(
     (u) =>
       (all || u.roles.includes('student')) &&
-      `${fullName(u)} ${u.email}`.toLowerCase().includes(query.toLowerCase()),
+      `${fullName(u)} ${u.email} ${u.phone || ''}`.toLowerCase().includes(
+        query.toLowerCase(),
+      ),
   )
   const current =
     users.find((u) => u.id === selected) || (profile ? user : undefined)
@@ -44,6 +46,7 @@ export default function UsersPage({
     name: '',
     surname: '',
     email: '',
+    phone: '',
     roles: ['student'],
     teacherId: user.roles.includes('teacher') ? user.id : null,
     photo: '',
@@ -94,7 +97,7 @@ export default function UsersPage({
               <Search size={20} />
               <input
                 aria-label="Поиск пользователей"
-                placeholder="Поиск по имени или email…"
+                placeholder="Поиск по имени, email или телефону…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -313,6 +316,22 @@ function UserEditor({
               autoComplete="off"
               onChange={(e) => field('email', e.target.value)}
             />
+          </label>
+          <label className="field">
+            <span>Телефон для входа</span>
+            <input
+              type="tel"
+              inputMode="tel"
+              maxLength={20}
+              readOnly={profile}
+              value={form.phone || ''}
+              autoComplete="off"
+              placeholder="+7 900 123-45-67"
+              onChange={(e) => field('phone', e.target.value)}
+            />
+            <small>
+              Можно войти по номеру. Для РФ удобно указывать в формате +7…
+            </small>
           </label>
           <label className="field">
             <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>

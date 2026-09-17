@@ -42,7 +42,33 @@ export function openStore(path) {
     CREATE TABLE IF NOT EXISTS lessons (id TEXT PRIMARY KEY, studentId TEXT NOT NULL REFERENCES users(id), teacherId TEXT NOT NULL REFERENCES users(id), date TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, studentId TEXT NOT NULL REFERENCES users(id), senderId TEXT NOT NULL REFERENCES users(id), text TEXT NOT NULL, created TEXT NOT NULL);
   `)
+  const columns = db.prepare('PRAGMA table_info(users)').all()
+  if (!columns.some((column) => column.name === 'phone'))
+    db.exec(`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique
+     ON users(phone) WHERE phone != ''`,
+  )
   return db
+}
+export function normalizePhone(value) {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed) return ''
+  const hasPlus = trimmed.startsWith('+')
+  let digits = trimmed.replace(/\D/g, '')
+  if (!digits) return ''
+  if (
+    !hasPlus ||
+    (digits.startsWith('7') && digits.length === 11) ||
+    (digits.startsWith('8') && digits.length === 11) ||
+    digits.length === 10
+  ) {
+    if (digits.startsWith('8') && digits.length === 11)
+      digits = `7${digits.slice(1)}`
+    if (digits.length === 10) digits = `7${digits}`
+    if (digits.startsWith('7') && digits.length === 11) return `+${digits}`
+  }
+  return hasPlus ? `+${digits}` : digits
 }
 export function publicUser(row) {
   if (!row) return null

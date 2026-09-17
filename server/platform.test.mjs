@@ -84,6 +84,28 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
       ).status,
       403,
     )
+    db.prepare('UPDATE users SET phone=? WHERE id=?').run(
+      '+79001234567',
+      'student',
+    )
+    assert.equal(
+      (
+        await request('/login', 'POST', {
+          phone: '+7 (900) 123-45-67',
+          password,
+        })
+      ).status,
+      200,
+    )
+    assert.equal(
+      (
+        await request('/login', 'POST', {
+          phone: '+79001234567',
+          password: 'incorrect',
+        })
+      ).status,
+      401,
+    )
     const owner = await login('owner'),
       teacher = await login('teacher'),
       student = await login('student'),
