@@ -1,34 +1,83 @@
 .logo {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
   flex-shrink: 0;
+  align-items: center;
 }
 .logo img {
-  width: 150px;
-  height: auto;
   display: block;
+  height: auto;
+  flex-shrink: 0;
+}
+.logo__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.logo__wordmark {
+  display: block;
+  margin: 0;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
 }
 .logo__tagline {
-  color: var(--text-secondary);
+  color: #5a6288;
   font-size: 12px;
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 1.3;
   white-space: nowrap;
 }
-.logo--sm img {
-  width: 135px;
+
+/* Horizontal: symbol left, wordmark + slogan right (all non-login screens). */
+.logo--inline {
+  flex-direction: row;
+  gap: 12px;
 }
-.logo--lg img {
-  width: 180px;
+.logo--inline img {
+  width: 44px;
 }
-.logo--centered {
-  align-items: center;
-  text-align: center;
+.logo--sm.logo--inline {
+  gap: 10px;
 }
-.logo--stacked {
+.logo--sm.logo--inline img {
+  width: 36px;
+}
+.logo--lg.logo--inline {
   gap: 14px;
+}
+.logo--lg.logo--inline img {
+  width: 56px;
+}
+.logo--inline .logo__wordmark {
+  font-size: 24px;
+}
+.logo--sm.logo--inline .logo__wordmark {
+  font-size: 20px;
+}
+.logo--lg.logo--inline .logo__wordmark {
+  font-size: 30px;
+}
+.logo--inline .logo__tagline {
+  margin-top: 2px;
+  font-size: 12px;
+  white-space: normal;
+  max-width: 14em;
+}
+.logo--sm.logo--inline .logo__tagline {
+  font-size: 11px;
+}
+.logo--lg.logo--inline .logo__tagline {
+  font-size: 14px;
+}
+
+/* Stacked: symbol above text (login only). */
+.logo--stacked {
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
 }
 .logo--stacked img {
   width: 72px;
@@ -39,15 +88,11 @@
 .logo--lg.logo--stacked img {
   width: 88px;
 }
+.logo--stacked .logo__text {
+  align-items: inherit;
+}
 .logo--stacked .logo__wordmark {
-  display: block;
-  margin: 0;
-  font-family: var(--font-ui);
   font-size: 44px;
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  color: var(--text-primary);
 }
 .logo--sm.logo--stacked .logo__wordmark {
   font-size: 32px;
@@ -56,9 +101,8 @@
   font-size: 48px;
 }
 .logo--stacked .logo__tagline {
-  margin-top: -2px;
+  margin-top: 8px;
   font-size: 16px;
-  color: #5a6288;
   white-space: normal;
   max-width: 18em;
 }
@@ -67,4 +111,15 @@
 }
 .logo--lg.logo--stacked .logo__tagline {
   font-size: 17px;
+}
+
+.logo--centered {
+  align-items: center;
+  text-align: center;
+}
+.logo--centered.logo--stacked .logo__text {
+  align-items: center;
+}
+.logo--centered.logo--inline {
+  justify-content: center;
 }

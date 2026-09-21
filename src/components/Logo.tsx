@@ -14,26 +14,24 @@ export default function Logo({
   centered,
   stacked,
 }: LogoProps) {
-  if (stacked) {
-    return (
-      <div
-        className={`logo logo--stacked logo--${size}${centered ? ' logo--centered' : ''}`}
-      >
-        <img src="/brand/padma-logo-symbol.svg" alt="" aria-hidden="true" />
+  const classes = [
+    'logo',
+    stacked ? 'logo--stacked' : 'logo--inline',
+    `logo--${size}`,
+    centered ? 'logo--centered' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <div className={classes}>
+      <img src="/brand/padma-logo-symbol.svg" alt="" aria-hidden="true" />
+      <div className="logo__text">
         <strong className="logo__wordmark">Padma</strong>
         {showTagline && (
           <span className="logo__tagline">Учиться вместе. Видеть больше.</span>
         )}
       </div>
-    )
-  }
-
-  return (
-    <div className={`logo logo--${size}${centered ? ' logo--centered' : ''}`}>
-      <img src="/brand/padma-logo-horizontal.svg" alt="Padma" />
-      {showTagline && (
-        <span className="logo__tagline">Учиться вместе. Видеть больше.</span>
-      )}
     </div>
   )
 }

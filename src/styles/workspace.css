@@ -637,12 +637,14 @@ input[type='checkbox'] {
   .sidebar > .logo {
     padding: 0;
     margin-bottom: 30px;
-    width: 62px;
-    overflow: hidden;
+    width: auto;
+    overflow: visible;
+  }
+  .sidebar > .logo .logo__text {
+    display: none;
   }
   .sidebar > .logo img {
-    width: 160px;
-    max-width: none;
+    width: 44px;
   }
   .sidebar nav a {
     justify-content: center;

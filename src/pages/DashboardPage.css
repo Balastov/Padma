@@ -194,7 +194,7 @@
   .student-page {
     padding: 20px 16px 32px;
   }
-  .student-header .logo span {
+  .student-header .logo__text {
     display: none;
   }
   .student-grid {

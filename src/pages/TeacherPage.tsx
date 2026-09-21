@@ -108,7 +108,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   return (
     <div className="workspace">
       <aside className="sidebar glass-panel">
-        <Logo showTagline={false} />
+        <Logo />
         <nav aria-label="Основное меню">
           <NavLink to="/teacher" end aria-label="Сегодня" title="Сегодня">
             <Home size={23} />
