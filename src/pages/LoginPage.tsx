@@ -95,11 +95,7 @@ export default function LoginPage({
           />
         </aside>
         <section className="login__panel">
-          <Logo size="lg" centered />
-          <div className="login__intro">
-            <h1>Добро пожаловать.</h1>
-            <p>Войдите в своё пространство Padma.</p>
-          </div>
+          <Logo size="lg" centered stacked />
           <form onSubmit={submit} className="form-stack">
             {useEmail ? (
               <label className="field">

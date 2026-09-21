@@ -10,9 +10,11 @@
   height: auto;
   display: block;
 }
-.logo span {
+.logo__tagline {
   color: var(--text-secondary);
   font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
   white-space: nowrap;
 }
 .logo--sm img {
@@ -23,4 +25,46 @@
 }
 .logo--centered {
   align-items: center;
+  text-align: center;
+}
+.logo--stacked {
+  gap: 14px;
+}
+.logo--stacked img {
+  width: 72px;
+}
+.logo--sm.logo--stacked img {
+  width: 56px;
+}
+.logo--lg.logo--stacked img {
+  width: 88px;
+}
+.logo--stacked .logo__wordmark {
+  display: block;
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+.logo--sm.logo--stacked .logo__wordmark {
+  font-size: 32px;
+}
+.logo--lg.logo--stacked .logo__wordmark {
+  font-size: 48px;
+}
+.logo--stacked .logo__tagline {
+  margin-top: -2px;
+  font-size: 16px;
+  color: #5a6288;
+  white-space: normal;
+  max-width: 18em;
+}
+.logo--sm.logo--stacked .logo__tagline {
+  font-size: 13px;
+}
+.logo--lg.logo--stacked .logo__tagline {
+  font-size: 17px;
 }
