@@ -5,30 +5,30 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1a1a1a",
-  "theme_color": "#1a1a1a",
+  "background_color": "#f5f3fa",
+  "theme_color": "#f5f3fa",
   "lang": "ru",
   "icons": [
     {
-      "src": "/icons/icon-192-dark.png",
+      "src": "/icons/icon-192-light.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512-dark.png",
+      "src": "/icons/icon-512-light.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-192-dark.png",
+      "src": "/icons/icon-192-light.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icons/icon-512-dark.png",
+      "src": "/icons/icon-512-light.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
