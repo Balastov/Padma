@@ -20,6 +20,7 @@ import {
   looksLikeForeignPhone,
   normalizePhone,
 } from '../phone'
+import { syncPushWithPreference } from '../notifications'
 
 type Props = {
   user: User
@@ -58,6 +59,7 @@ export default function UsersPage({
     roles: ['student'],
     teacherId: user.roles.includes('teacher') ? user.id : null,
     photo: '',
+    notificationsEnabled: false,
   }
   async function saved(next: User) {
     setAdding(false)
@@ -241,6 +243,10 @@ function UserEditor({
     profile ||
     manager ||
     (!profile && initial.roles.every((r) => r === 'student'))
+  const targetIsManager = form.roles.some(
+    (role) => role === 'owner' || role === 'admin',
+  )
+  const notificationsEditable = editable && (!targetIsManager || manager)
   const field = (key: string, value: unknown) =>
     setForm((prev) => ({ ...prev, [key]: value }))
   const phoneReady = foreignPhone
@@ -340,6 +346,13 @@ function UserEditor({
       if (profile && form.password) {
         window.location.assign('/')
         return
+      }
+      if (profile && actor.id === next.id) {
+        try {
+          await syncPushWithPreference(Boolean(next.notificationsEnabled))
+        } catch {
+          /* permission or unsupported — flag already saved */
+        }
       }
       await onSaved(next)
       setForm({
@@ -542,6 +555,22 @@ function UserEditor({
               ))}
             </fieldset>
           )}
+          <label className="field field--check">
+            <span className="field__check">
+              <input
+                type="checkbox"
+                checked={Boolean(form.notificationsEnabled)}
+                disabled={!notificationsEditable}
+                onChange={(e) =>
+                  field('notificationsEnabled', e.target.checked)
+                }
+              />
+              Уведомления
+            </span>
+            <small>
+              Сообщения и важные события Padma на этом устройстве и в браузере.
+            </small>
+          </label>
           <label className="photo-upload">
             <Upload size={18} />
             <span>

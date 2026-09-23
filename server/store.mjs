@@ -45,6 +45,10 @@ export function openStore(path) {
   const columns = db.prepare('PRAGMA table_info(users)').all()
   if (!columns.some((column) => column.name === 'phone'))
     db.exec(`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
+  if (!columns.some((column) => column.name === 'notificationsEnabled'))
+    db.exec(
+      `ALTER TABLE users ADD COLUMN notificationsEnabled INTEGER NOT NULL DEFAULT 0`,
+    )
   migrateEmailUniqueness(db)
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique
@@ -62,6 +66,13 @@ export function openStore(path) {
   db.exec(
     `CREATE INDEX IF NOT EXISTS messages_thread_key ON messages(threadKey)`,
   )
+  db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES users(id),
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created TEXT NOT NULL
+  )`)
   return db
 }
 function migrateEmailUniqueness(db) {
@@ -86,14 +97,17 @@ function migrateEmailUniqueness(db) {
       teacherId TEXT,
       photo TEXT NOT NULL DEFAULT '',
       archived INTEGER NOT NULL DEFAULT 0,
-      phone TEXT NOT NULL DEFAULT ''
+      phone TEXT NOT NULL DEFAULT '',
+      notificationsEnabled INTEGER NOT NULL DEFAULT 0
     );
     INSERT INTO users_mig (
-      id, name, surname, email, password, roles, teacherId, photo, archived, phone
+      id, name, surname, email, password, roles, teacherId, photo, archived, phone,
+      notificationsEnabled
     )
     SELECT
       id, name, surname, email, password, roles, teacherId, photo, archived,
-      COALESCE(phone, '')
+      COALESCE(phone, ''),
+      COALESCE(notificationsEnabled, 0)
     FROM users;
     DROP TABLE users;
     ALTER TABLE users_mig RENAME TO users;
@@ -130,7 +144,11 @@ export function isValidForeignPhone(value) {
 export function publicUser(row) {
   if (!row) return null
   const { password: _password, archived: _archived, ...user } = row
-  return { ...user, roles: JSON.parse(user.roles) }
+  return {
+    ...user,
+    roles: JSON.parse(user.roles),
+    notificationsEnabled: Boolean(user.notificationsEnabled),
+  }
 }
 export const isManagerRoles = (roles) =>
   roles.some((role) => role === 'owner' || role === 'admin')

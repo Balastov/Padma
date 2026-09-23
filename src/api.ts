@@ -8,6 +8,7 @@ export type User = {
   roles: Role[]
   teacherId: string | null
   photo: string
+  notificationsEnabled?: boolean
 }
 export type Teacher = Pick<User, 'id' | 'name' | 'surname' | 'photo'>
 export type Lesson = {

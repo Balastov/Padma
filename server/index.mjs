@@ -18,7 +18,9 @@ import {
   isValidForeignPhone,
   canChatWith,
   messageThreadKey,
+  isManagerRoles,
 } from './store.mjs'
+import { loadVapidKeys, sendPushToUser } from './push.mjs'
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
@@ -39,11 +41,18 @@ export function createApp({
 } = {}) {
   const db = openStore(dbPath)
   initHomework(db)
+  const vapid = loadVapidKeys(dbPath)
   const attempts = new Map()
   const getUser = (id) =>
     publicUser(
       db.prepare('SELECT * FROM users WHERE id=? AND archived=0').get(id),
     )
+  const applyNotificationsFlag = (actor, target, data) => {
+    if (typeof data.notificationsEnabled !== 'boolean') return undefined
+    if (isManagerRoles(target.roles) && !privileged(actor))
+      fail(403, 'Уведомления администратора может менять только администратор')
+    return data.notificationsEnabled ? 1 : 0
+  }
   const users = () =>
     db
       .prepare('SELECT * FROM users WHERE archived=0 ORDER BY name')
@@ -265,18 +274,35 @@ export function createApp({
             fail(400, 'Выберите действующего учителя')
         }
         try {
-          db.prepare(
-            'UPDATE users SET name=?,surname=?,email=?,phone=?,photo=?,roles=?,teacherId=? WHERE id=?',
-          ).run(
-            name,
-            surname,
-            email,
-            phone,
-            photo,
-            JSON.stringify(roles),
-            teacherId,
-            user.id,
-          )
+          const notificationsEnabled = applyNotificationsFlag(user, user, data)
+          if (notificationsEnabled === undefined) {
+            db.prepare(
+              'UPDATE users SET name=?,surname=?,email=?,phone=?,photo=?,roles=?,teacherId=? WHERE id=?',
+            ).run(
+              name,
+              surname,
+              email,
+              phone,
+              photo,
+              JSON.stringify(roles),
+              teacherId,
+              user.id,
+            )
+          } else {
+            db.prepare(
+              'UPDATE users SET name=?,surname=?,email=?,phone=?,photo=?,roles=?,teacherId=?,notificationsEnabled=? WHERE id=?',
+            ).run(
+              name,
+              surname,
+              email,
+              phone,
+              photo,
+              JSON.stringify(roles),
+              teacherId,
+              notificationsEnabled,
+              user.id,
+            )
+          }
         } catch (error) {
           if (String(error).includes('UNIQUE'))
             fail(
@@ -293,6 +319,36 @@ export function createApp({
         )
           db.prepare('DELETE FROM sessions WHERE userId=?').run(user.id)
         return send(200, getUser(user.id))
+      }
+      if (path === '/api/push/vapid-public-key' && req.method === 'GET') {
+        return send(200, { publicKey: vapid.publicKey })
+      }
+      if (path === '/api/push/subscribe' && req.method === 'POST') {
+        const data = await body(req)
+        const endpoint = text(data.endpoint, 2048)
+        const p256dh = text(data.keys?.p256dh, 256)
+        const auth = text(data.keys?.auth, 256)
+        if (!endpoint || !p256dh || !auth)
+          fail(400, 'Некорректная подписка на уведомления')
+        db.prepare(
+          `INSERT INTO push_subscriptions (endpoint, userId, p256dh, auth, created)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(endpoint) DO UPDATE SET
+             userId=excluded.userId,
+             p256dh=excluded.p256dh,
+             auth=excluded.auth,
+             created=excluded.created`,
+        ).run(endpoint, user.id, p256dh, auth, new Date().toISOString())
+        return send(200, { ok: true })
+      }
+      if (path === '/api/push/subscribe' && req.method === 'DELETE') {
+        const data = await body(req)
+        const endpoint = text(data.endpoint, 2048)
+        if (!endpoint) fail(400, 'Укажите endpoint подписки')
+        db.prepare(
+          'DELETE FROM push_subscriptions WHERE endpoint=? AND userId=?',
+        ).run(endpoint, user.id)
+        return send(200, { ok: true })
       }
       if (path === '/api/users' && req.method === 'GET') {
         if (!staff(user)) fail(403, 'Нет доступа к справочнику')
@@ -407,27 +463,50 @@ export function createApp({
               ?.password
         try {
           if (old) {
-            db.prepare(
-              'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=? WHERE id=?',
-            ).run(
-              name,
-              surname,
-              email,
-              phone,
-              hash,
-              JSON.stringify([...new Set(roles)]),
-              teacherId,
-              photo,
-              id,
-            )
+            const notificationsEnabled = applyNotificationsFlag(user, old, data)
+            if (notificationsEnabled === undefined) {
+              db.prepare(
+                'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=? WHERE id=?',
+              ).run(
+                name,
+                surname,
+                email,
+                phone,
+                hash,
+                JSON.stringify([...new Set(roles)]),
+                teacherId,
+                photo,
+                id,
+              )
+            } else {
+              db.prepare(
+                'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=?,notificationsEnabled=? WHERE id=?',
+              ).run(
+                name,
+                surname,
+                email,
+                phone,
+                hash,
+                JSON.stringify([...new Set(roles)]),
+                teacherId,
+                photo,
+                notificationsEnabled,
+                id,
+              )
+            }
             if (
               data.password ||
               JSON.stringify(old.roles) !== JSON.stringify(roles)
             )
               db.prepare('DELETE FROM sessions WHERE userId=?').run(id)
-          } else
+          } else {
+            const notificationsEnabled =
+              typeof data.notificationsEnabled === 'boolean' &&
+              data.notificationsEnabled
+                ? 1
+                : 0
             db.prepare(
-              'INSERT INTO users (id,name,surname,email,phone,password,roles,teacherId,photo) VALUES (?,?,?,?,?,?,?,?,?)',
+              'INSERT INTO users (id,name,surname,email,phone,password,roles,teacherId,photo,notificationsEnabled) VALUES (?,?,?,?,?,?,?,?,?,?)',
             ).run(
               id,
               name,
@@ -438,7 +517,9 @@ export function createApp({
               JSON.stringify([...new Set(roles)]),
               teacherId,
               photo,
+              notificationsEnabled,
             )
+          }
         } catch (error) {
           if (String(error).includes('UNIQUE'))
             fail(
@@ -589,6 +670,13 @@ export function createApp({
           result.created,
           threadKey,
         )
+        const senderName = [user.name, user.surname].filter(Boolean).join(' ')
+        const openPath = staff(peer) ? '/teacher' : '/dashboard'
+        void sendPushToUser(db, peer.id, {
+          title: 'Новое сообщение',
+          body: `${senderName}: ${message.slice(0, 120)}`,
+          url: openPath,
+        })
         return send(201, result)
       }
       fail(404, 'Не найдено')

@@ -35,6 +35,7 @@ Dev-сервер обычно работает на порту 5173; точны�
 - `HOST`: адрес привязки, по умолчанию `127.0.0.1`.
 - `APP_ORIGIN`: разрешённые origin через запятую для изменяющих запросов. Локально разрешены localhost/127.0.0.1 с портами 5173 и 3001. В production задавать только собственный HTTPS origin.
 - `NODE_ENV=production`: включает Secure у cookie. Production должен работать через HTTPS.
+- `VAPID_SUBJECT`: контакт для Web Push (mailto:…), по умолчанию `mailto:notify@padma.ru`. Ключи VAPID хранятся в `.data/vapid.json` и создаются при первом запуске.
 
 `.env` автоматически не читается: передайте окружение процессу или используйте `node --env-file=.env.local server/index.mjs`. `VITE_*` не нужен, секретов в клиенте нет.
 
