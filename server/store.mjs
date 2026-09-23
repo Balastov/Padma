@@ -54,6 +54,14 @@ export function openStore(path) {
     `CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique
      ON users(phone) WHERE phone != ''`,
   )
+  const messageColumns = db.prepare('PRAGMA table_info(messages)').all()
+  if (!messageColumns.some((column) => column.name === 'threadKey')) {
+    db.exec(`ALTER TABLE messages ADD COLUMN threadKey TEXT NOT NULL DEFAULT ''`)
+    db.exec(`UPDATE messages SET threadKey = studentId WHERE threadKey = ''`)
+  }
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS messages_thread_key ON messages(threadKey)`,
+  )
   return db
 }
 function migrateEmailUniqueness(db) {
@@ -123,4 +131,31 @@ export function publicUser(row) {
   if (!row) return null
   const { password: _password, archived: _archived, ...user } = row
   return { ...user, roles: JSON.parse(user.roles) }
+}
+export const isManagerRoles = (roles) =>
+  roles.some((role) => role === 'owner' || role === 'admin')
+export const isStudentOnly = (user) =>
+  user.roles.includes('student') &&
+  !user.roles.some((role) => ['owner', 'admin', 'teacher'].includes(role))
+/** Whether viewer may open a chat thread with peer. */
+export function canChatWith(viewer, peer) {
+  if (!viewer || !peer || viewer.id === peer.id) return false
+  if (isManagerRoles(viewer.roles)) return true
+  if (isStudentOnly(viewer)) return peer.id === viewer.teacherId
+  if (viewer.roles.includes('teacher')) {
+    if (peer.roles.includes('student') && peer.teacherId === viewer.id)
+      return true
+    return peer.roles.some((role) =>
+      ['owner', 'admin', 'teacher'].includes(role),
+    )
+  }
+  return false
+}
+/** Stable thread id for a pair of users (keeps student threads on student id). */
+export function messageThreadKey(userA, userB) {
+  const aStudent = userA.roles.includes('student')
+  const bStudent = userB.roles.includes('student')
+  if (aStudent && !bStudent) return userA.id
+  if (bStudent && !aStudent) return userB.id
+  return [userA.id, userB.id].sort().join(':')
 }

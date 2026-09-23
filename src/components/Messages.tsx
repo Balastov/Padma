@@ -1,31 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, MessageCircle, Send } from 'lucide-react'
 import { api, fullName } from '../api'
-import type { Message, Teacher, User } from '../api'
+import type { Message, User } from '../api'
 import Avatar from './Avatar'
-export default function Messages({
-  user,
-  students,
-  teacher,
-}: {
-  user: User
-  students?: User[]
-  teacher?: Teacher | null
-}) {
+
+export default function Messages({ user }: { user: User }) {
   const [open, setOpen] = useState(false)
+  const [peers, setPeers] = useState<User[]>([])
   const [selected, setSelected] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const studentId = students ? selected || students[0]?.id : user.id
-  const available = students ? !!studentId : !!teacher
+  const [loadingPeers, setLoadingPeers] = useState(true)
   const thread = useRef<HTMLDivElement>(null)
+  const peerId =
+    selected && peers.some((p) => p.id === selected)
+      ? selected
+      : peers[0]?.id || ''
+  const peer = peers.find((p) => p.id === peerId) || null
+  const available = Boolean(peerId)
+
   useEffect(() => {
-    if (!open || !studentId || !available) return
+    let active = true
+    setLoadingPeers(true)
+    api<User[]>('/chat-peers')
+      .then((list) => {
+        if (!active) return
+        setPeers(list)
+        setError('')
+      })
+      .catch((e) => {
+        if (active) setError(e.message)
+      })
+      .finally(() => {
+        if (active) setLoadingPeers(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [user.id])
+
+  useEffect(() => {
+    if (!open || !peerId || !available) return
     let active = true
     const refresh = () =>
-      api<Message[]>('/messages/' + studentId)
+      api<Message[]>('/messages/' + peerId)
         .then((data) => {
           if (active) {
             setMessages(data)
@@ -41,28 +61,32 @@ export default function Messages({
       active = false
       clearInterval(timer)
     }
-  }, [open, studentId, available])
+  }, [open, peerId, available])
+
   useEffect(() => {
     thread.current?.scrollTo({ top: thread.current.scrollHeight })
   }, [messages.length])
+
   async function send(e: React.FormEvent) {
     e.preventDefault()
-    if (!draft.trim() || !studentId) return
+    if (!draft.trim() || !peerId) return
     setBusy(true)
     try {
-      await api('/messages/' + studentId, 'POST', { text: draft })
+      await api('/messages/' + peerId, 'POST', { text: draft })
       setDraft('')
-      setMessages(await api<Message[]>('/messages/' + studentId))
+      setMessages(await api<Message[]>('/messages/' + peerId))
       setError('')
-    } catch (e) {
-      setError((e as Error).message)
+    } catch (err) {
+      setError((err as Error).message)
     } finally {
       setBusy(false)
     }
   }
+
   return (
     <section className={`messages glass-panel${open ? ' is-open' : ''}`}>
       <button
+        type="button"
         className="messages__toggle"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
@@ -71,28 +95,24 @@ export default function Messages({
           <MessageCircle size={26} />
         </span>
         <span>
-          <strong>
-            {students
-              ? 'Чат с учениками'
-              : teacher
-                ? `Чат · ${teacher.name}`
-                : 'Чат с учителем'}
-          </strong>
+          <strong>{peer ? `Чат · ${fullName(peer)}` : 'Чат'}</strong>
           <small>
-            {available
-              ? 'Будьте на связи между уроками'
-              : 'Появится после назначения учителя'}
+            {loadingPeers
+              ? 'Загружаем контакты…'
+              : available
+                ? 'Будьте на связи между уроками'
+                : 'Пока нет доступных собеседников'}
           </small>
         </span>
         <ChevronDown className={open ? 'rotate' : ''} size={20} />
       </button>
       {open && (
         <div className="messages__body">
-          {students && students.length > 0 && (
+          {peers.length > 0 && (
             <label className="field">
-              <span>Ученик</span>
+              <span>Пользователь</span>
               <select
-                value={studentId}
+                value={peerId}
                 onChange={(e) => {
                   setSelected(e.target.value)
                   setMessages([])
@@ -100,9 +120,9 @@ export default function Messages({
                   setDraft('')
                 }}
               >
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {fullName(s)}
+                {peers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {fullName(p)}
                   </option>
                 ))}
               </select>
@@ -110,9 +130,9 @@ export default function Messages({
           )}
           {!available ? (
             <p className="empty-state">
-              {students
-                ? 'Пока нет учеников для переписки.'
-                : 'Скоро вам назначат учителя.'}
+              {loadingPeers
+                ? 'Загружаем список…'
+                : 'Нет пользователей для переписки по вашим правам.'}
             </p>
           ) : (
             <>
@@ -136,7 +156,7 @@ export default function Messages({
                   ))
                 ) : (
                   <div className="empty-state">
-                    <Avatar user={teacher} />
+                    <Avatar user={peer} />
                     <p>
                       Начните разговор.
                       <br />
@@ -154,6 +174,7 @@ export default function Messages({
                   onChange={(e) => setDraft(e.target.value)}
                 />
                 <button
+                  type="submit"
                   className="button-primary icon-button"
                   disabled={busy || !draft.trim()}
                   aria-label="Отправить сообщение"

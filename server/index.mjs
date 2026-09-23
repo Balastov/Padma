@@ -16,6 +16,8 @@ import {
   normalizePhone,
   isCompleteRuPhone,
   isValidForeignPhone,
+  canChatWith,
+  messageThreadKey,
 } from './store.mjs'
 
 const fail = (status, message) => {
@@ -532,41 +534,60 @@ export function createApp({
         db.prepare('DELETE FROM lessons WHERE id=?').run(id)
         return send(200, { ok: true })
       }
+      if (path === '/api/chat-peers' && req.method === 'GET') {
+        return send(
+          200,
+          users()
+            .filter((peer) => canChatWith(user, peer))
+            .map((peer) => ({
+              id: peer.id,
+              name: peer.name,
+              surname: peer.surname,
+              photo: peer.photo,
+              roles: peer.roles,
+              teacherId: peer.teacherId,
+              email: peer.email,
+              phone: peer.phone,
+            })),
+        )
+      }
       if (
         /^\/api\/messages\/[^/]+$/.test(path) &&
         ['GET', 'POST'].includes(req.method)
       ) {
-        const studentId = path.split('/').pop(),
-          student = getUser(studentId)
-        if (!student?.roles.includes('student')) fail(403, 'Чат недоступен')
-        if (staff(user)) {
-          // owner, admin and teacher may open any student chat
-        } else if (user.id === student.id && student.teacherId) {
-          // student chats with their assigned teacher thread
-        } else {
-          fail(403, 'Чат недоступен')
-        }
+        const peerId = path.split('/').pop(),
+          peer = getUser(peerId)
+        if (!canChatWith(user, peer)) fail(403, 'Чат недоступен')
+        const threadKey = messageThreadKey(user, peer)
         if (req.method === 'GET')
           return send(
             200,
             db
               .prepare(
-                'SELECT * FROM messages WHERE studentId=? ORDER BY created',
+                'SELECT id, studentId, senderId, text, created FROM messages WHERE threadKey=? ORDER BY created',
               )
-              .all(studentId),
+              .all(threadKey),
           )
         const data = await body(req),
           message = text(data.text, 2000)
         if (!message) fail(400, 'Введите сообщение')
+        const anchorId = peer.roles.includes('student') ? peer.id : user.id
         const result = {
           id: randomUUID(),
-          studentId,
+          studentId: anchorId,
           senderId: user.id,
           text: message,
           created: new Date().toISOString(),
         }
-        db.prepare('INSERT INTO messages VALUES (?,?,?,?,?)').run(
-          ...Object.values(result),
+        db.prepare(
+          'INSERT INTO messages (id, studentId, senderId, text, created, threadKey) VALUES (?,?,?,?,?,?)',
+        ).run(
+          result.id,
+          result.studentId,
+          result.senderId,
+          result.text,
+          result.created,
+          threadKey,
         )
         return send(201, result)
       }

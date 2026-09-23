@@ -235,7 +235,7 @@ export default function DashboardPage({
               </p>
             )}
           </section>
-          <Messages user={user} teacher={teacher} />
+          <Messages user={user} />
         </aside>
       </main>
     </div>

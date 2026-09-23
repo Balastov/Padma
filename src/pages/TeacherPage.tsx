@@ -244,12 +244,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                         </div>
                       )}
                     </section>
-                    <Messages
-                      user={user}
-                      students={users.filter((u) =>
-                        u.roles.includes('student'),
-                      )}
-                    />
+                    <Messages user={user} />
                   </div>
                   <Calendar
                     lessons={lessons}

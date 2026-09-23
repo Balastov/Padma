@@ -370,6 +370,12 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     assert.equal(
       (await request('/messages/student', 'POST', { text: 'Привет' }, student))
         .status,
+      403,
+    )
+    assert.equal(
+      (
+        await request('/messages/teacher', 'POST', { text: 'Привет' }, student)
+      ).status,
       201,
     )
     assert.equal(
@@ -383,7 +389,21 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
       1,
     )
     assert.equal(
+      (await request('/messages/teacher', 'GET', undefined, student)).body
+        .length,
+      1,
+    )
+    // other teacher: not assigned to student → no access; own outsider ok
+    assert.equal(
       (await request('/messages/student', 'GET', undefined, other)).status,
+      403,
+    )
+    assert.equal(
+      (await request('/messages/outsider', 'GET', undefined, other)).status,
+      200,
+    )
+    assert.equal(
+      (await request('/messages/owner', 'GET', undefined, teacher)).status,
       200,
     )
     assert.equal(
@@ -392,8 +412,25 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     )
     assert.equal(
       (await request('/messages/outsider', 'GET', undefined, teacher)).status,
-      200,
+      403,
     )
+    const teacherPeers = await request('/chat-peers', 'GET', undefined, teacher)
+    assert.equal(teacherPeers.status, 200)
+    const teacherPeerIds = teacherPeers.body.map((u) => u.id)
+    assert.ok(teacherPeerIds.includes('student'))
+    assert.ok(teacherPeerIds.includes('owner'))
+    assert.ok(teacherPeerIds.includes('other'))
+    assert.ok(!teacherPeerIds.includes('outsider'))
+    assert.ok(!teacherPeerIds.includes('guest'))
+    assert.ok(!teacherPeerIds.includes('teacher'))
+    const studentPeers = await request('/chat-peers', 'GET', undefined, student)
+    assert.deepEqual(
+      studentPeers.body.map((u) => u.id),
+      ['teacher'],
+    )
+    const ownerPeers = await request('/chat-peers', 'GET', undefined, owner)
+    assert.ok(ownerPeers.body.length >= 5)
+    assert.ok(!ownerPeers.body.some((u) => u.id === 'owner'))
     assert.equal(
       (await request('/messages/student', 'GET', undefined, guest)).status,
       403,
