@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, LogOut } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronDown, LogOut, UserRound } from 'lucide-react'
+import { isStaff } from '../api'
 import type { User } from '../api'
 import Avatar from './Avatar'
+
 export default function ProfileMenu({
   user,
   onLogout,
@@ -12,6 +15,8 @@ export default function ProfileMenu({
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const ref = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+  const profilePath = isStaff(user) ? '/teacher/settings' : '/dashboard/settings'
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false)
@@ -29,6 +34,7 @@ export default function ProfileMenu({
   return (
     <div className="profile-menu" ref={ref}>
       <button
+        type="button"
         className="profile-trigger"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -40,6 +46,17 @@ export default function ProfileMenu({
       {open && (
         <div className="profile-popover glass-panel">
           <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              navigate(profilePath)
+            }}
+          >
+            <UserRound size={18} />
+            Мой профиль
+          </button>
+          <button
+            type="button"
             onClick={() =>
               onLogout().catch(() => setError('Не удалось выйти. Повторите.'))
             }

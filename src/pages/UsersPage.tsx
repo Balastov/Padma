@@ -75,10 +75,10 @@ export default function UsersPage({
     <>
       <header className="page-heading">
         <div>
-          <h1>{profile ? 'Настройки' : 'Ученики'}</h1>
+          <h1>{profile ? 'Мой профиль' : 'Ученики'}</h1>
           <p>
             {profile
-              ? 'Ваш профиль и данные для входа.'
+              ? 'Ваши данные для входа и общения в Padma.'
               : 'Люди, с которыми вы открываете новое.'}
           </p>
         </div>
@@ -374,9 +374,9 @@ function UserEditor({
     if (!file) return
     if (
       !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-      file.size > 1000000
+      file.size > 2_000_000
     ) {
-      setError('Выберите JPG, PNG или WebP до 1 МБ')
+      setError('Выберите JPG, PNG или WebP до 2 МБ')
       return
     }
     const reader = new FileReader()
@@ -426,7 +426,6 @@ function UserEditor({
             <span>{emailRequired ? 'Email для входа *' : 'Email для входа'}</span>
             <input
               type="email"
-              readOnly={profile}
               value={form.email}
               autoComplete="off"
               onChange={(e) => field('email', e.target.value)}
@@ -442,7 +441,6 @@ function UserEditor({
             <input
               type="tel"
               inputMode="tel"
-              readOnly={profile}
               value={form.phone || ''}
               autoComplete="off"
               placeholder={
@@ -456,18 +454,16 @@ function UserEditor({
                 : 'Формат РФ: +7 и 10 цифр, начиная с 9. Можно войти по номеру.'}
             </small>
           </label>
-          {!profile && (
-            <label className="field field--check">
-              <span className="field__check">
-                <input
-                  type="checkbox"
-                  checked={foreignPhone}
-                  onChange={(e) => onForeignToggle(e.target.checked)}
-                />
-                У меня иностранный номер телефона
-              </span>
-            </label>
-          )}
+          <label className="field field--check">
+            <span className="field__check">
+              <input
+                type="checkbox"
+                checked={foreignPhone}
+                onChange={(e) => onForeignToggle(e.target.checked)}
+              />
+              У меня иностранный номер телефона
+            </span>
+          </label>
           <label className="field">
             <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
             <input
@@ -502,7 +498,7 @@ function UserEditor({
               />
             </label>
           )}
-          {!profile && (
+          {(!profile || manager) && (
             <label className="field">
               <span>Учитель</span>
               <select
@@ -519,9 +515,12 @@ function UserEditor({
                     </option>
                   ))}
               </select>
+              {profile && manager && (
+                <small>Свою роль учителя и назначение может менять владелец и администратор.</small>
+              )}
             </label>
           )}
-          {manager && !profile && (
+          {manager && (
             <fieldset className="roles">
               <legend>Роли *</legend>
               {(Object.keys(roleNames) as Role[]).map((role) => (
@@ -546,7 +545,7 @@ function UserEditor({
           <label className="photo-upload">
             <Upload size={18} />
             <span>
-              Загрузить фото <small>JPG, PNG, WebP · до 1 МБ</small>
+              Загрузить фото <small>JPG, PNG, WebP · до 2 МБ</small>
             </span>
             <input
               aria-label="Фото пользователя"

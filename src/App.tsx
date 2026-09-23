@@ -4,6 +4,7 @@ import { api, ApiError, isStaff } from './api'
 import type { User } from './api'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import StudentSettingsPage from './pages/StudentSettingsPage'
 import TeacherPage from './pages/TeacherPage'
 
 export default function App() {
@@ -84,6 +85,22 @@ export default function App() {
             <Navigate to="/teacher" replace />
           ) : (
             <DashboardPage user={user} onLogout={logout} />
+          )
+        }
+      />
+      <Route
+        path="/dashboard/settings"
+        element={
+          !user ? (
+            <Navigate to="/" replace />
+          ) : isStaff(user) ? (
+            <Navigate to="/teacher/settings" replace />
+          ) : (
+            <StudentSettingsPage
+              user={user}
+              onLogout={logout}
+              onUserChange={setUser}
+            />
           )
         }
       />

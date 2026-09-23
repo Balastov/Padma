@@ -136,22 +136,54 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     const updatedProfile = await request(
       '/profile',
       'PATCH',
-      { name: 'Обновлённый учитель', surname: '', photo: '', roles: ['owner'] },
+      {
+        name: 'Обновлённый учитель',
+        surname: '',
+        email: 'teacher@example.test',
+        phone: '',
+        photo: '',
+        roles: ['owner'],
+      },
       teacher,
     )
     assert.equal(updatedProfile.status, 200)
+    assert.equal(updatedProfile.body.name, 'Обновлённый учитель')
     assert.deepEqual(updatedProfile.body.roles, ['teacher'])
     assert.equal(
       (
         await request(
           '/profile',
           'PATCH',
-          { name: 'Учитель', password: randomUUID(), currentPassword: 'wrong' },
+          {
+            name: 'Учитель',
+            email: 'teacher@example.test',
+            phone: '',
+            photo: '',
+            password: randomUUID(),
+            currentPassword: 'wrong',
+          },
           teacher,
         )
       ).status,
       400,
     )
+    const ownerProfile = await request(
+      '/profile',
+      'PATCH',
+      {
+        name: 'Owner',
+        surname: '',
+        email: 'owner@example.test',
+        phone: '+79001112233',
+        photo: '',
+        roles: ['owner', 'teacher'],
+        teacherId: null,
+      },
+      owner,
+    )
+    assert.equal(ownerProfile.status, 200)
+    assert.equal(ownerProfile.body.phone, '+79001112233')
+    assert.deepEqual(ownerProfile.body.roles.sort(), ['owner', 'teacher'])
     const created = await request(
       '/users',
       'POST',

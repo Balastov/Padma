@@ -56,7 +56,7 @@ export function createApp({
   const cookie = (token) =>
     `padma_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 604800 : 0}${secure ? '; Secure' : ''}`
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
-  async function body(req, limit = 1500000) {
+  async function body(req, limit = 3500000) {
     if (!req.headers['content-type']?.startsWith('application/json'))
       fail(415, 'Ожидается JSON')
     const chunks = []
@@ -189,15 +189,30 @@ export function createApp({
         const data = await body(req)
         const name = text(data.name, 80),
           surname = text(data.surname, 80),
-          photo = data.photo || ''
+          email = text(data.email).toLowerCase()
+        const foreignPhone = Boolean(data.foreignPhone)
+        const phone = normalizePhone(text(data.phone, 32), foreignPhone)
+        const photo = data.photo || ''
         if (!name) fail(400, 'Укажите имя')
+        if (email && !emailValid(email))
+          fail(400, 'Укажите корректный email')
+        if (phone) {
+          if (foreignPhone) {
+            if (!isValidForeignPhone(phone))
+              fail(400, 'Укажите корректный номер телефона')
+          } else if (!isCompleteRuPhone(phone)) {
+            fail(400, 'Укажите номер РФ: +7 и 10 цифр, начиная с 9')
+          }
+        }
+        if (!email && !phone)
+          fail(400, 'Укажите email или номер телефона')
         if (
           typeof photo !== 'string' ||
-          photo.length > 1400000 ||
+          photo.length > 2900000 ||
           (photo &&
             !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo))
         )
-          fail(400, 'Фото: JPG, PNG или WebP до 1 МБ')
+          fail(400, 'Фото: JPG, PNG или WebP до 2 МБ')
         if (data.password) {
           if (
             !passwordValid(data.password) ||
@@ -220,12 +235,61 @@ export function createApp({
           )
           db.prepare('DELETE FROM sessions WHERE userId=?').run(user.id)
         }
-        db.prepare('UPDATE users SET name=?,surname=?,photo=? WHERE id=?').run(
-          name,
-          surname,
-          photo,
-          user.id,
+        let roles = user.roles
+        let teacherId = user.teacherId
+        if (privileged(user)) {
+          if (Array.isArray(data.roles)) {
+            if (
+              !data.roles.length ||
+              data.roles.some((r) => !ROLES.includes(r))
+            )
+              fail(400, 'Выберите роль')
+            if (
+              user.roles.includes('owner') &&
+              !data.roles.includes('owner') &&
+              users().filter((u) => u.roles.includes('owner')).length === 1
+            )
+              fail(400, 'Нельзя убрать последнего владельца')
+            if (
+              user.roles.includes('teacher') &&
+              !data.roles.includes('teacher') &&
+              users().some((u) => u.teacherId === user.id)
+            )
+              fail(400, 'Сначала переназначьте учеников этого учителя')
+            roles = [...new Set(data.roles)]
+          }
+          teacherId = data.teacherId || null
+          if (teacherId && !getUser(teacherId)?.roles.includes('teacher'))
+            fail(400, 'Выберите действующего учителя')
+        }
+        try {
+          db.prepare(
+            'UPDATE users SET name=?,surname=?,email=?,phone=?,photo=?,roles=?,teacherId=? WHERE id=?',
+          ).run(
+            name,
+            surname,
+            email,
+            phone,
+            photo,
+            JSON.stringify(roles),
+            teacherId,
+            user.id,
+          )
+        } catch (error) {
+          if (String(error).includes('UNIQUE'))
+            fail(
+              409,
+              String(error).includes('phone')
+                ? 'Этот телефон уже используется'
+                : 'Этот email уже используется',
+            )
+          throw error
+        }
+        if (
+          privileged(user) &&
+          JSON.stringify(user.roles) !== JSON.stringify(roles)
         )
+          db.prepare('DELETE FROM sessions WHERE userId=?').run(user.id)
         return send(200, getUser(user.id))
       }
       if (path === '/api/users' && req.method === 'GET') {
@@ -332,7 +396,7 @@ export function createApp({
             !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo))
         )
           fail(400, 'Фото: JPG, PNG или WebP')
-        if (photo.length > 1400000) fail(400, 'Фото слишком большое')
+        if (photo.length > 2900000) fail(400, 'Фото слишком большое')
         if ((!old || data.password) && !passwordValid(data.password))
           fail(400, 'Пароль должен содержать от 8 до 128 символов')
         const hash = data.password
