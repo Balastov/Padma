@@ -18,6 +18,7 @@ import {
   dateKey,
   friendlyDate,
   fullName,
+  isManager,
   LESSON_URL,
 } from '../api'
 import type { Lesson, User } from '../api'
@@ -245,7 +246,9 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                     </section>
                     <Messages
                       user={user}
-                      students={students.filter((s) => !!s.teacherId)}
+                      students={users.filter((u) =>
+                        u.roles.includes('student'),
+                      )}
                     />
                   </div>
                   <Calendar
@@ -257,7 +260,18 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                 </>
               }
             />
-            <Route path="homework" element={<Homework students={students} />} />
+            <Route
+              path="homework"
+              element={
+                <Homework
+                  students={
+                    isManager(user)
+                      ? students
+                      : students.filter((s) => s.teacherId === user.id)
+                  }
+                />
+              }
+            />
             <Route
               path="students"
               element={

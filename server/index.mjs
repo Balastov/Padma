@@ -230,13 +230,7 @@ export function createApp({
       }
       if (path === '/api/users' && req.method === 'GET') {
         if (!staff(user)) fail(403, 'Нет доступа к справочнику')
-        return send(
-          200,
-          users().filter(
-            (u) =>
-              privileged(user) || u.id === user.id || u.teacherId === user.id,
-          ),
-        )
+        return send(200, users())
       }
       if (path === '/api/teachers' && req.method === 'GET') {
         return send(
@@ -480,8 +474,14 @@ export function createApp({
       ) {
         const studentId = path.split('/').pop(),
           student = getUser(studentId)
-        if (!canStudent(user, student) || !student.teacherId)
+        if (!student?.roles.includes('student')) fail(403, 'Чат недоступен')
+        if (staff(user)) {
+          // owner, admin and teacher may open any student chat
+        } else if (user.id === student.id && student.teacherId) {
+          // student chats with their assigned teacher thread
+        } else {
           fail(403, 'Чат недоступен')
+        }
         if (req.method === 'GET')
           return send(
             200,

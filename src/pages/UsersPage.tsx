@@ -165,8 +165,8 @@ export default function UsersPage({
               )}
             </div>
             <p className="caption">
-              {isManager(user)
-                ? 'Вам доступны все пользователи Padma.'
+              {isManager(user) || user.roles.includes('teacher')
+                ? 'В чате и списках видны все пользователи. Изменять чужие профили может владелец и администратор.'
                 : 'Здесь отображаются ваши ученики и ваш профиль.'}
             </p>
           </section>

@@ -111,7 +111,7 @@ export default function Messages({
           {!available ? (
             <p className="empty-state">
               {students
-                ? 'Добавьте ученика и назначьте ему учителя, чтобы начать общение.'
+                ? 'Пока нет учеников для переписки.'
                 : 'Скоро вам назначат учителя.'}
             </p>
           ) : (

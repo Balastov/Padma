@@ -126,11 +126,13 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     )
     assert.equal((await request('/users', 'GET', undefined, guest)).status, 403)
     const teacherList = await request('/users', 'GET', undefined, teacher)
-    assert.deepEqual(teacherList.body.map((u) => u.id).sort(), [
-      'student',
-      'teacher',
-    ])
+    assert.deepEqual(
+      teacherList.body.map((u) => u.id).sort(),
+      ['guest', 'other', 'outsider', 'owner', 'student', 'teacher'],
+    )
     assert(teacherList.body.every((u) => !('password' in u)))
+    const ownerList = await request('/users', 'GET', undefined, owner)
+    assert.equal(ownerList.body.length, teacherList.body.length)
     const updatedProfile = await request(
       '/profile',
       'PATCH',
@@ -350,7 +352,15 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     )
     assert.equal(
       (await request('/messages/student', 'GET', undefined, other)).status,
-      403,
+      200,
+    )
+    assert.equal(
+      (await request('/messages/student', 'GET', undefined, owner)).status,
+      200,
+    )
+    assert.equal(
+      (await request('/messages/outsider', 'GET', undefined, teacher)).status,
+      200,
     )
     assert.equal(
       (await request('/messages/student', 'GET', undefined, guest)).status,
