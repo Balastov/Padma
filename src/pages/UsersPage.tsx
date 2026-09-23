@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Check,
@@ -66,6 +66,11 @@ export default function UsersPage({
     if (profile) onUserChange?.(next)
     await refresh()
   }
+  function startAdding() {
+    setAdding(true)
+    setSelected('')
+    setNotice('')
+  }
   return (
     <>
       <header className="page-heading">
@@ -90,12 +95,9 @@ export default function UsersPage({
             <div className="section-heading">
               <h2>{all ? 'Пользователи' : 'Список учеников'}</h2>
               <button
+                type="button"
                 className="button-primary button-small"
-                onClick={() => {
-                  setAdding(true)
-                  setSelected('')
-                  setNotice('')
-                }}
+                onClick={startAdding}
               >
                 <Plus size={18} />
                 <span>Добавить</span>
@@ -152,8 +154,9 @@ export default function UsersPage({
                   </p>
                   {!query && (
                     <button
+                      type="button"
                       className="text-button"
-                      onClick={() => setAdding(true)}
+                      onClick={startAdding}
                     >
                       Добавить первого ученика
                     </button>
@@ -232,6 +235,7 @@ function UserEditor({
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [confirm, setConfirm] = useState(false)
+  const editorRef = useRef<HTMLElement>(null)
   const manager = isManager(actor)
   const editable =
     profile ||
@@ -242,7 +246,16 @@ function UserEditor({
   const phoneReady = foreignPhone
     ? isValidForeignPhone(form.phone || '')
     : isCompleteRuPhone(form.phone || '')
+  const phoneStarted =
+    foreignPhone
+      ? Boolean((form.phone || '').replace(/\D/g, '').length)
+      : Boolean((form.phone || '').replace(/\D/g, '').replace(/^7/, '').length)
   const emailRequired = !phoneReady
+  useEffect(() => {
+    if (!initial.id) {
+      editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [initial.id])
   function onPhoneChange(value: string) {
     field(
       'phone',
@@ -260,26 +273,59 @@ function UserEditor({
       field('phone', formatRuPhoneInput(form.phone || '7'))
     }
   }
+  function emailLooksValid(value: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  }
   async function submit(e: FormEvent) {
     e.preventDefault()
-    setBusy(true)
     setError('')
+    const email = (form.email || '').trim()
+    if (!form.name.trim()) {
+      setError('Укажите имя')
+      return
+    }
+    if (!email && !phoneReady) {
+      setError(
+        phoneStarted
+          ? 'Укажите полный номер телефона или email'
+          : 'Укажите email или полный номер телефона',
+      )
+      return
+    }
+    if (email && !emailLooksValid(email)) {
+      setError('Укажите корректный email')
+      return
+    }
+    if (!foreignPhone && phoneStarted && !phoneReady) {
+      setError('Номер РФ: +7 и 10 цифр, начиная с 9')
+      return
+    }
+    if (foreignPhone && phoneStarted && !phoneReady) {
+      setError('Укажите номер: только цифры, можно с + в начале')
+      return
+    }
+    if (!initial.id && (!form.password || form.password.length < 8)) {
+      setError('Пароль должен содержать от 8 до 128 символов')
+      return
+    }
+    if (form.password && form.password.length < 8) {
+      setError('Пароль должен содержать от 8 до 128 символов')
+      return
+    }
+    if (profile && form.password && !(form.currentPassword || '').trim()) {
+      setError('Укажите текущий пароль')
+      return
+    }
+    if (!form.roles.length) {
+      setError('Выберите хотя бы одну роль')
+      return
+    }
+    setBusy(true)
     try {
-      const email = form.email.trim()
-      if (!email && !phoneReady) {
-        setError('Укажите email или полный номер телефона')
-        return
-      }
-      if (!foreignPhone && form.phone && form.phone !== '+7' && !phoneReady) {
-        setError('Номер РФ: +7 и 10 цифр, начиная с 9')
-        return
-      }
-      if (foreignPhone && form.phone && !phoneReady) {
-        setError('Укажите номер: только цифры, можно с + в начале')
-        return
-      }
       const payload = {
         ...form,
+        name: form.name.trim(),
+        surname: (form.surname || '').trim(),
         email,
         phone: phoneReady
           ? normalizePhone(form.phone || '', foreignPhone)
@@ -342,7 +388,7 @@ function UserEditor({
     reader.readAsDataURL(file)
   }
   return (
-    <section className="glass-panel user-editor">
+    <section className="glass-panel user-editor" ref={editorRef}>
       <div className="user-editor__head">
         <Avatar user={form} large />
         <div>
@@ -355,7 +401,7 @@ function UserEditor({
           Изменение этого профиля доступно владельцу и администратору.
         </p>
       )}
-      <form className="form-stack" onSubmit={submit}>
+      <form className="form-stack" onSubmit={submit} noValidate>
         <fieldset disabled={!editable || busy}>
           <div className="form-two">
             <label className="field">
@@ -380,15 +426,16 @@ function UserEditor({
             <span>{emailRequired ? 'Email для входа *' : 'Email для входа'}</span>
             <input
               type="email"
-              required={emailRequired}
               readOnly={profile}
               value={form.email}
               autoComplete="off"
               onChange={(e) => field('email', e.target.value)}
             />
-            {!emailRequired && (
-              <small>Можно не указывать, если задан телефон для входа.</small>
-            )}
+            <small>
+              {emailRequired
+                ? 'Обязателен, если телефон не заполнен полностью.'
+                : 'Можно не указывать, если задан телефон для входа.'}
+            </small>
           </label>
           <label className="field">
             <span>Телефон для входа</span>
@@ -403,29 +450,30 @@ function UserEditor({
               }
               onChange={(e) => onPhoneChange(e.target.value)}
             />
-            {!profile && (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={foreignPhone}
-                  onChange={(e) => onForeignToggle(e.target.checked)}
-                />{' '}
-                У меня иностранный номер телефона
-              </label>
-            )}
             <small>
               {foreignPhone
                 ? 'Можно войти по номеру. Только цифры, можно с +.'
                 : 'Формат РФ: +7 и 10 цифр, начиная с 9. Можно войти по номеру.'}
             </small>
           </label>
+          {!profile && (
+            <label className="field field--check">
+              <span className="field__check">
+                <input
+                  type="checkbox"
+                  checked={foreignPhone}
+                  onChange={(e) => onForeignToggle(e.target.checked)}
+                />
+                У меня иностранный номер телефона
+              </span>
+            </label>
+          )}
           <label className="field">
             <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
             <input
               type="password"
               minLength={8}
               maxLength={128}
-              required={!initial.id}
               autoComplete="new-password"
               value={form.password}
               onChange={(e) => field('password', e.target.value)}
@@ -517,7 +565,11 @@ function UserEditor({
             </button>
           )}
           <div className="form-actions">
-            <button className="button-primary" disabled={!form.roles.length}>
+            <button
+              type="submit"
+              className="button-primary"
+              disabled={!form.roles.length}
+            >
               <Save size={19} />
               {busy ? 'Сохраняем…' : 'Сохранить изменения'}
             </button>

@@ -62,7 +62,9 @@ function migrateEmailUniqueness(db) {
       `SELECT sql FROM sqlite_master WHERE type='table' AND name='users'`,
     )
     .get()
-  if (!row?.sql?.includes('email TEXT NOT NULL UNIQUE')) return
+  const createSql = row?.sql || ''
+  // Old schema had a table-level UNIQUE on email, which blocks several empty emails.
+  if (!/email[^,\n]*\bUNIQUE\b/i.test(createSql)) return
   db.exec('PRAGMA foreign_keys=OFF')
   db.exec(`
     BEGIN;

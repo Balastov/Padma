@@ -57,7 +57,12 @@ export async function api<T>(
     headers: data === undefined ? {} : { 'Content-Type': 'application/json' },
     body: data === undefined ? undefined : JSON.stringify(data),
   })
-  const result = await res.json()
+  let result: { error?: string } = {}
+  try {
+    result = await res.json()
+  } catch {
+    result = {}
+  }
   if (res.status === 401 && path !== '/me' && path !== '/login')
     window.location.assign('/')
   if (!res.ok)
@@ -65,7 +70,7 @@ export async function api<T>(
       result.error || 'Не удалось выполнить запрос',
       res.status,
     )
-  return result
+  return result as T
 }
 export const fullName = (user?: Pick<User, 'name' | 'surname'> | null) =>
   user ? `${user.name} ${user.surname}`.trim() : 'Пользователь'

@@ -507,6 +507,17 @@
   color: var(--text-secondary);
   font-size: 14px;
 }
+.field--check {
+  margin-top: -4px;
+}
+.field__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
 .profile-editor {
   max-width: 800px;
 }
