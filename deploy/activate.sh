@@ -7,6 +7,13 @@ test -f "$release/dist/index.html"
 test -f "$release/server/index.mjs"
 test -f /var/lib/padma/padma.sqlite
 test -x /opt/padma/node/bin/node
+# Production Node deps (web-push). Prefer modules packed into the release;
+# otherwise install from package.json so older autodeploy scripts still work.
+if ! test -d "$release/node_modules/web-push"; then
+  /opt/padma/node/bin/npm install --omit=dev --no-audit --no-fund --prefix "$release"
+  chown -R padma:padma "$release/node_modules"
+fi
+test -d "$release/node_modules/web-push"
 previous=$(readlink /var/www/padma/current)
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup=/var/backups/padma/$stamp

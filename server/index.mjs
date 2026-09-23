@@ -111,6 +111,14 @@ export function createApp({
         } catch {
           file = resolve(root, 'index.html')
         }
+        // Missing assets must not become SPA HTML (breaks /sw.js registration).
+        if (
+          file.endsWith(`${sep}index.html`) &&
+          path !== '/' &&
+          path !== '/index.html' &&
+          extname(path)
+        )
+          fail(404, 'Не найдено')
         const content = await readFile(file)
         const mime = {
           '.html': 'text/html',
@@ -127,7 +135,7 @@ export function createApp({
           'X-Content-Type-Options': 'nosniff',
           'Referrer-Policy': 'same-origin',
           'Content-Security-Policy':
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         })
         return res.end(req.method === 'HEAD' ? undefined : content)
       }

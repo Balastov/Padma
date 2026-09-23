@@ -29,7 +29,7 @@ trap cleanup EXIT
 failed() { printf '%s\n' "$revision" > "$state/failed"; echo "Deployment failed: $revision" >&2; }
 trap failed ERR
 as_builder git --git-dir="$cache/repo.git" --work-tree="$work" checkout -f "$revision" -- .
-as_builder bash -c 'set -e; cd "$1"; npm ci --no-audit --no-fund; npm run lint; npm test; npm run build' _ "$work"
+as_builder bash -c 'set -e; cd "$1"; npm ci --no-audit --no-fund; npm run lint; npm test; npm run build; npm prune --omit=dev' _ "$work"
 # Do not activate an obsolete build if main advanced while checks were running.
 latest=$(as_builder git ls-remote "$repo" refs/heads/main | cut -f1)
 if [[ "$latest" != "$revision" ]]; then
@@ -38,7 +38,7 @@ if [[ "$latest" != "$revision" ]]; then
 fi
 release="/var/www/padma/releases/$(date -u +%Y%m%dT%H%M%SZ)-${revision:0:12}"
 install -d -m 755 "$release"
-tar -C "$work" -cf - dist server scripts/backup.mjs deploy package.json src/api.ts src/calendarLayout.ts | tar --no-same-owner -xf - -C "$release"
+tar -C "$work" -cf - dist server node_modules package.json scripts/backup.mjs deploy src/api.ts src/calendarLayout.ts | tar --no-same-owner -xf - -C "$release"
 printf '%s\n' "$revision" > "$release/REVISION"
 bash "$release/deploy/activate.sh" "$release"
 printf '%s\n' "$revision" > "$state/deployed.next"

@@ -477,6 +477,22 @@ function UserEditor({
               У меня иностранный номер телефона
             </span>
           </label>
+          <label className="field field--check">
+            <span className="field__check">
+              <input
+                type="checkbox"
+                checked={Boolean(form.notificationsEnabled)}
+                disabled={!notificationsEditable}
+                onChange={(e) =>
+                  field('notificationsEnabled', e.target.checked)
+                }
+              />
+              Уведомления
+            </span>
+            <small>
+              Сообщения и важные события Padma на этом устройстве и в браузере.
+            </small>
+          </label>
           <label className="field">
             <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
             <input
@@ -555,22 +571,6 @@ function UserEditor({
               ))}
             </fieldset>
           )}
-          <label className="field field--check">
-            <span className="field__check">
-              <input
-                type="checkbox"
-                checked={Boolean(form.notificationsEnabled)}
-                disabled={!notificationsEditable}
-                onChange={(e) =>
-                  field('notificationsEnabled', e.target.checked)
-                }
-              />
-              Уведомления
-            </span>
-            <small>
-              Сообщения и важные события Padma на этом устройстве и в браузере.
-            </small>
-          </label>
           <label className="photo-upload">
             <Upload size={18} />
             <span>
