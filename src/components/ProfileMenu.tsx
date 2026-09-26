@@ -8,15 +8,17 @@ import Avatar from './Avatar'
 export default function ProfileMenu({
   user,
   onLogout,
+  compact,
 }: {
   user: User
   onLogout: () => Promise<void>
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  const profilePath = isStaff(user) ? '/teacher/settings' : '/dashboard/settings'
+  const profilePath = isStaff(user) ? '/teacher/settings' : '/settings'
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false)
@@ -40,7 +42,7 @@ export default function ProfileMenu({
         onClick={() => setOpen(!open)}
       >
         <Avatar user={user} />
-        <span>{user.name}</span>
+        {!compact && <span>{user.name}</span>}
         <ChevronDown size={18} />
       </button>
       {open && (
@@ -53,7 +55,17 @@ export default function ProfileMenu({
             }}
           >
             <UserRound size={18} />
-            Мой профиль
+            Профиль
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              navigate(profilePath)
+            }}
+          >
+            <UserRound size={18} />
+            Настройки
           </button>
           <button
             type="button"

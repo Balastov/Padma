@@ -1,0 +1,64 @@
+.progress-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.progress-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.progress-stats .glass-panel {
+  padding: 16px;
+}
+.progress-stats small {
+  color: var(--text-muted);
+}
+.progress-stats strong {
+  display: block;
+  font-size: 1.8rem;
+  margin-top: 4px;
+}
+.progress-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.progress-grid .glass-panel,
+.progress-revisit {
+  padding: 16px;
+}
+.skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.skills li {
+  display: flex;
+  justify-content: space-between;
+}
+.practice-days {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+}
+.practice-days span {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: #eef2ff;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  color: #047857;
+}
+.practice-days span.is-on {
+  background: #d1fae5;
+}
+@media (max-width: 800px) {
+  .progress-stats,
+  .progress-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

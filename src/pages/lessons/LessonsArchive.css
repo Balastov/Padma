@@ -1,0 +1,29 @@
+.lessons-archive__list {
+  display: grid;
+  gap: 12px;
+}
+.lessons-archive__card {
+  padding: 16px 18px;
+  text-decoration: none;
+  color: inherit;
+  display: grid;
+  gap: 4px;
+}
+.lessons-archive__card:hover {
+  filter: brightness(1.02);
+}
+.lesson-detail__grid {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.lesson-detail__grid h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+@media (max-width: 700px) {
+  .lesson-detail__grid {
+    grid-template-columns: 1fr;
+  }
+}

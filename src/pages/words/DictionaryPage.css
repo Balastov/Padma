@@ -1,0 +1,255 @@
+.dict-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dict-lead {
+  text-align: center;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.dict-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+.dict-search-block {
+  padding: 14px;
+}
+.dict-search-results {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+.dict-search-results li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #ffffffa0;
+}
+.dict-search-results a {
+  text-decoration: none;
+  color: inherit;
+  display: grid;
+}
+.topics-split {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.2fr);
+  gap: 14px;
+}
+.topics-list,
+.topic-hero,
+.topics-hint {
+  padding: 18px;
+}
+.topics-list ul,
+.subtopic-list,
+.word-rows,
+.lesson-pick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 520px;
+  overflow: auto;
+}
+.topics-list li button,
+.lesson-pick a,
+.word-rows li {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 0;
+  background: #ffffffa8;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+.word-rows li.is-active,
+.lesson-pick a.active {
+  background: #536cff18;
+}
+.word-rows li button {
+  flex: 1;
+  display: grid;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.subtopic-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #ffffffa8;
+  align-items: center;
+}
+.subtopic-list__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.words-triple {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.2fr) minmax(200px, 0.8fr);
+  gap: 12px;
+}
+.words-col,
+.word-card {
+  padding: 16px;
+}
+.word-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.word-card h2 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+.word-card__tr {
+  font-size: 1.15rem;
+  margin: 6px 0 0;
+}
+.word-card__tags {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+.lessons-words {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.4fr);
+  gap: 12px;
+}
+.lesson-words-detail {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+.lesson-words-detail__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.progress-ring {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--accent) 0 75%, #e5e9f5 0);
+  color: var(--text-primary);
+}
+.progress-ring strong {
+  background: #fff;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.stat-tiles > div {
+  padding: 10px;
+  border-radius: 12px;
+  background: #e0f2fe;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.stat-tiles > div:nth-child(2) {
+  background: #d1fae5;
+}
+.stat-tiles > div:nth-child(3) {
+  background: #e0e7ff;
+}
+.stat-tiles > div:nth-child(4) {
+  background: #ffedd5;
+}
+.words-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.words-table th,
+.words-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #6375b418;
+}
+.collections-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+  gap: 12px;
+}
+.collections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.collection-card {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.collection-card.is-active {
+  outline: 2px solid #536cff55;
+}
+.collection-card__main {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+}
+.collection-card__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.collection-detail {
+  padding: 16px;
+}
+.collection-new {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+@media (max-width: 1000px) {
+  .topics-split,
+  .words-triple,
+  .lessons-words,
+  .collections-layout,
+  .stat-tiles {
+    grid-template-columns: 1fr;
+  }
+}

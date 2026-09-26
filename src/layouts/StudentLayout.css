@@ -1,0 +1,117 @@
+.student-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+.student-shell__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 16px;
+  position: sticky;
+  top: 16px;
+  height: calc(100vh - 32px);
+}
+.student-shell__sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.student-shell__sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.student-shell__sidebar nav a.active {
+  color: #fff;
+  background: var(--gradient-primary);
+  box-shadow: var(--shadow-primary);
+}
+.student-shell__sidebar nav a:not(.active):hover {
+  background: #ffffff88;
+  color: var(--text-primary);
+}
+.student-shell__quote {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.student-shell__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.student-shell__top {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+.student-shell__chat {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid #6375b424;
+  background: #ffffffb8;
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.student-shell__content {
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .student-shell {
+    grid-template-columns: 1fr;
+    padding: 10px;
+    padding-bottom: 80px;
+  }
+  .student-shell__sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    height: auto;
+    z-index: 40;
+    flex-direction: row;
+    align-items: center;
+    border-radius: 20px 20px 0 0;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .student-shell__sidebar .logo,
+  .student-shell__quote {
+    display: none;
+  }
+  .student-shell__sidebar nav {
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-around;
+  }
+  .student-shell__sidebar nav a {
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px;
+    font-size: 0.68rem;
+  }
+  .student-shell__sidebar nav a span {
+    max-width: 4.5rem;
+    text-align: center;
+    line-height: 1.15;
+  }
+}

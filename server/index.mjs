@@ -682,7 +682,7 @@ export function createApp({
           threadKey,
         )
         const senderName = [user.name, user.surname].filter(Boolean).join(' ')
-        const openPath = staff(peer) ? '/teacher' : '/dashboard'
+        const openPath = staff(peer) ? '/teacher' : '/today'
         void sendPushToUser(db, peer.id, {
           title: 'Новое сообщение',
           body: `${senderName}: ${message.slice(0, 120)}`,

@@ -3,15 +3,114 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { api, ApiError, isStaff } from './api'
 import type { User } from './api'
 import LoginPage from './pages/LoginPage'
-import DashboardPage from './pages/DashboardPage'
-import StudentSettingsPage from './pages/StudentSettingsPage'
 import TeacherPage from './pages/TeacherPage'
 import NotificationPrompt from './components/NotificationPrompt'
+import StudentLayout from './layouts/StudentLayout'
+import TodayPage from './pages/today/TodayPage'
+import PathPage from './pages/path/PathPage'
+import LessonsArchivePage, {
+  LessonDetailPage,
+} from './pages/lessons/LessonsArchivePage'
+import LibraryPage, {
+  LibraryMaterialPage,
+} from './pages/library/LibraryPage'
+import StudentSettingsPage from './pages/settings/StudentSettingsPage'
+import WordsLayout from './pages/words/WordsLayout'
+import DictionaryHub, {
+  TopicsPage,
+  TopicDetailPage,
+  SubtopicWordsPage,
+  LessonsWordsPage,
+  CollectionsPage,
+  CollectionDetailPage,
+  WordDeepLinkPage,
+} from './pages/words/DictionaryPages'
+import TrainerHubPage from './pages/words/TrainerHubPage'
+import TrainerSessionPage, {
+  TrainerResultPage,
+} from './pages/words/TrainerSessionPage'
+import ProgressPage from './pages/words/ProgressPage'
 import {
   enablePushSubscription,
   pushSupported,
   shouldShowNotifyPrompt,
 } from './notifications'
+
+function StudentRoutes({
+  user,
+  onLogout,
+  onUserChange,
+}: {
+  user: User
+  onLogout: () => Promise<void>
+  onUserChange: (u: User) => void
+}) {
+  return (
+    <Routes>
+      <Route element={<StudentLayout user={user} onLogout={onLogout} />}>
+        <Route path="today" element={<TodayPage user={user} />} />
+        <Route path="path" element={<PathPage />} />
+        <Route path="lessons" element={<LessonsArchivePage />} />
+        <Route path="lessons/:lessonId" element={<LessonDetailPage />} />
+        <Route path="library" element={<LibraryPage />} />
+        <Route path="library/:materialId" element={<LibraryMaterialPage />} />
+        <Route
+          path="settings"
+          element={
+            <StudentSettingsPage
+              user={user}
+              onLogout={onLogout}
+              onUserChange={onUserChange}
+            />
+          }
+        />
+        <Route path="words" element={<WordsLayout />}>
+          <Route index element={<Navigate to="dictionary" replace />} />
+          <Route path="dictionary" element={<DictionaryHub />} />
+          <Route path="dictionary/topics" element={<TopicsPage />} />
+          <Route
+            path="dictionary/topics/:topicId"
+            element={<TopicDetailPage />}
+          />
+          <Route
+            path="dictionary/topics/:topicId/:subtopicId"
+            element={<SubtopicWordsPage />}
+          />
+          <Route path="dictionary/lessons" element={<LessonsWordsPage />} />
+          <Route
+            path="dictionary/lessons/:lessonId"
+            element={<LessonsWordsPage />}
+          />
+          <Route
+            path="dictionary/collections"
+            element={<CollectionsPage />}
+          />
+          <Route
+            path="dictionary/collections/:collectionId"
+            element={<CollectionDetailPage />}
+          />
+          <Route path="word/:wordId" element={<WordDeepLinkPage />} />
+          <Route path="trainer" element={<TrainerHubPage />} />
+          <Route
+            path="trainer/session/:sessionId"
+            element={<TrainerSessionPage />}
+          />
+          <Route
+            path="trainer/result/:sessionId"
+            element={<TrainerResultPage />}
+          />
+          <Route path="progress" element={<ProgressPage />} />
+        </Route>
+      </Route>
+      <Route path="dashboard" element={<Navigate to="/today" replace />} />
+      <Route
+        path="dashboard/settings"
+        element={<Navigate to="/settings" replace />}
+      />
+      <Route path="*" element={<Navigate to="/today" replace />} />
+    </Routes>
+  )
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -62,7 +161,7 @@ export default function App() {
         </button>
       </div>
     )
-  const home = user ? (isStaff(user) ? '/teacher' : '/dashboard') : '/'
+  const home = user ? (isStaff(user) ? '/teacher' : '/today') : '/'
   return (
     <>
       {user && shouldShowNotifyPrompt(user) && (
@@ -91,31 +190,19 @@ export default function App() {
                 onUserChange={setUser}
               />
             ) : (
-              <Navigate to="/dashboard" replace />
+              <Navigate to="/today" replace />
             )
           }
         />
         <Route
-          path="/dashboard"
+          path="/*"
           element={
             !user ? (
               <Navigate to="/" replace />
             ) : isStaff(user) ? (
               <Navigate to="/teacher" replace />
             ) : (
-              <DashboardPage user={user} onLogout={logout} />
-            )
-          }
-        />
-        <Route
-          path="/dashboard/settings"
-          element={
-            !user ? (
-              <Navigate to="/" replace />
-            ) : isStaff(user) ? (
-              <Navigate to="/teacher/settings" replace />
-            ) : (
-              <StudentSettingsPage
+              <StudentRoutes
                 user={user}
                 onLogout={logout}
                 onUserChange={setUser}
@@ -123,7 +210,6 @@ export default function App() {
             )
           }
         />
-        <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
     </>
   )

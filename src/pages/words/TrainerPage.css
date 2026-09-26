@@ -1,0 +1,257 @@
+.trainer-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.trainer-resume {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+}
+.trainer-filters {
+  padding: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+.trainer-filters .field {
+  margin: 0;
+  min-width: 180px;
+}
+.trainer-formats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.trainer-group {
+  padding: 14px;
+}
+.trainer-group h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+.trainer-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.trainer-group li {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #ffffffa8;
+}
+.trainer-group small {
+  display: block;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.trainer-session {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.7fr);
+  gap: 12px;
+}
+.trainer-board {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+.trainer-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.trainer-progress__bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e9f5;
+  overflow: hidden;
+}
+.trainer-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--gradient-primary);
+}
+.session-words {
+  padding: 14px;
+}
+.session-words ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 70vh;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+.session-words li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+.session-words li.is-current {
+  background: #536cff18;
+}
+.session-words li.is-done {
+  opacity: 0.85;
+}
+.letter-bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.letter-bank button {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid #6375b430;
+  background: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.choice-grid button {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #6375b430;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.tf-actions {
+  display: flex;
+  gap: 12px;
+}
+.tf-actions button {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 14px;
+  cursor: pointer;
+}
+.tf-yes {
+  border: 1px solid #10b98166;
+  background: #d1fae5;
+}
+.tf-no {
+  border: 1px solid #eb526766;
+  background: #ffe4e6;
+}
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.memory-grid button {
+  min-height: 72px;
+  border-radius: 14px;
+  border: 0;
+  background: var(--gradient-primary);
+  color: #fff;
+  cursor: pointer;
+}
+.memory-grid button.is-open,
+.memory-grid button.is-matched {
+  background: #fff;
+  color: var(--text-primary);
+  border: 1px solid #6375b430;
+}
+.pair-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.pair-board button {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #6375b430;
+  background: #fff;
+  cursor: pointer;
+}
+.pair-board button.is-picked {
+  outline: 2px solid var(--accent);
+}
+.pair-board button.is-done {
+  opacity: 0.5;
+}
+.find-grid {
+  display: grid;
+  gap: 4px;
+  justify-content: start;
+}
+.find-grid__row {
+  display: flex;
+  gap: 4px;
+}
+.find-grid__cell {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #6375b430;
+  background: #fff;
+  cursor: pointer;
+}
+.find-grid__cell.is-on {
+  background: var(--gradient-primary);
+  color: #fff;
+  border: 0;
+}
+.rate-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rate-row button {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 0;
+  cursor: pointer;
+}
+.rate-easy {
+  background: #d1fae5;
+}
+.rate-more {
+  background: #fef3c7;
+}
+.rate-later {
+  background: #fce7f3;
+}
+.trainer-result {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+  text-align: center;
+}
+.trainer-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+@media (max-width: 1000px) {
+  .trainer-formats,
+  .trainer-session,
+  .choice-grid,
+  .memory-grid {
+    grid-template-columns: 1fr;
+  }
+  .session-words {
+    order: -1;
+  }
+}

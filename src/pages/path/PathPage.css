@@ -1,0 +1,63 @@
+.path-level {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+.path-level small {
+  display: block;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.path-level strong {
+  font-size: 1.6rem;
+}
+.path-level__aim p {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.path-map {
+  padding: 20px;
+}
+.path-map ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.path-node {
+  display: flex;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid #6375b418;
+}
+.path-node__dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #a7afc8;
+  flex-shrink: 0;
+}
+.path-node--done .path-node__dot {
+  background: #10b981;
+}
+.path-node--current .path-node__dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px #536cff33;
+}
+.path-node small {
+  display: block;
+  color: var(--text-muted);
+}
+@media (max-width: 700px) {
+  .path-level {
+    grid-template-columns: 1fr 1fr;
+  }
+  .path-level__aim {
+    grid-column: 1 / -1;
+  }
+}
