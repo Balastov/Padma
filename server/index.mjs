@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import { initHomework, homeworkRoute } from './homework.mjs'
+import { initVocab, vocabRoute } from './vocab.mjs'
 import { readFile, stat } from 'node:fs/promises'
 import { resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,6 +42,7 @@ export function createApp({
 } = {}) {
   const db = openStore(dbPath)
   initHomework(db)
+  initVocab(db)
   const vapid = loadVapidKeys(dbPath)
   const attempts = new Map()
   const getUser = (id) =>
@@ -199,6 +201,7 @@ export function createApp({
         await homeworkRoute({ path, req, res, db, user, body, send, getUser })
       )
         return
+      if (await vocabRoute({ path, req, res, db, user, body, send })) return
       if (path === '/api/me' && req.method === 'GET') return send(200, user)
       if (path === '/api/logout' && req.method === 'POST') {
         db.prepare('DELETE FROM sessions WHERE token=?').run(tokenHash(token))
