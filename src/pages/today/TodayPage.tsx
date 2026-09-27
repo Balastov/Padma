@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   UserRound,
-  Video,
   Volume2,
 } from 'lucide-react'
 import {
@@ -16,7 +15,6 @@ import {
   dateKey,
   friendlyDate,
   fullName,
-  LESSON_URL,
   weekDays,
 } from '../../api'
 import type { Lesson, Teacher, User } from '../../api'
@@ -138,18 +136,6 @@ export default function TodayPage({ user }: { user: User }) {
                   <UserRound size={18} />
                   {fullName(teacher)}
                 </p>
-              )}
-              {next && (
-                <a
-                  className="button-primary"
-                  href={LESSON_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Video size={20} />
-                  Подключиться
-                  <ChevronRight size={18} />
-                </a>
               )}
             </div>
           </section>

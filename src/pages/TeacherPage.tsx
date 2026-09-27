@@ -2,13 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import {
   CalendarDays,
-  ChevronRight,
   Clock3,
   Home,
   Plus,
   Settings,
   Users,
-  Video,
   BookOpen,
 } from 'lucide-react'
 import {
@@ -19,13 +17,13 @@ import {
   friendlyDate,
   fullName,
   isManager,
-  LESSON_URL,
 } from '../api'
 import type { Lesson, User } from '../api'
 import Logo from '../components/Logo'
 import Homework from '../components/Homework'
 import Modal from '../components/Modal'
 import ProfileMenu from '../components/ProfileMenu'
+import JoinLessonButton from '../components/JoinLessonButton'
 import Avatar from '../components/Avatar'
 import Calendar from '../components/Calendar'
 import Messages from '../components/Messages'
@@ -148,7 +146,10 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
       <main className="workspace__main">
         <div className="workspace__account">
           <span className="workspace__eyebrow">ПРОСТРАНСТВО ПРЕПОДАВАТЕЛЯ</span>
-          <ProfileMenu user={user} onLogout={onLogout} />
+          <div className="workspace__account-actions">
+            <JoinLessonButton />
+            <ProfileMenu user={user} onLogout={onLogout} />
+          </div>
         </div>
         {error && (
           <div className="error" role="alert">
@@ -210,16 +211,6 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                               {next.start} – {next.end}
                             </span>
                           </div>
-                          <a
-                            className="button-primary next-teacher__cta"
-                            href={LESSON_URL}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <Video size={21} />
-                            Войти в урок
-                            <ChevronRight size={20} />
-                          </a>
                         </>
                       ) : (
                         <div className="next-teacher__empty">

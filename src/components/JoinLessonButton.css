@@ -1,0 +1,102 @@
+.join-lesson {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 18px 4px 4px;
+  border-radius: 999px;
+  background: var(--gradient-primary);
+  background-size: 160% 100%;
+  background-position: 0% 50%;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-primary), inset 0 1px 0 #ffffff55;
+  text-shadow: 0 1px 2px #182d7655;
+  transition:
+    background-position 0.5s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.join-lesson:hover {
+  background-position: 100% 50%;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px #536cff40, inset 0 1px 0 #ffffff55;
+}
+.join-lesson:active {
+  transform: translateY(0);
+}
+.join-lesson:focus-visible {
+  outline: 3px solid #536cff66;
+  outline-offset: 3px;
+}
+.join-lesson__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff2e;
+  border: 1px solid #ffffff4d;
+  backdrop-filter: blur(6px);
+}
+.join-lesson__pulse {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #4dffb5;
+  box-shadow: 0 0 0 2px #fff;
+}
+.join-lesson__pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #4dffb5;
+  animation: join-lesson-pulse 1.8s ease-out infinite;
+}
+.join-lesson__short {
+  display: none;
+}
+@keyframes join-lesson-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .join-lesson,
+  .join-lesson__pulse::after {
+    transition: none;
+    animation: none;
+  }
+}
+@media (max-width: 520px) {
+  .join-lesson {
+    padding-right: 14px;
+    font-size: 0.9rem;
+  }
+  .join-lesson__full {
+    display: none;
+  }
+  .join-lesson__short {
+    display: inline;
+  }
+  .workspace__account:has(.join-lesson) .workspace__eyebrow {
+    display: none;
+  }
+  .workspace__account:has(.join-lesson) {
+    justify-content: flex-end;
+  }
+}

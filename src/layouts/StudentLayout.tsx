@@ -12,6 +12,7 @@ import type { User } from '../api'
 import Logo from '../components/Logo'
 import ProfileMenu from '../components/ProfileMenu'
 import ChatDrawer from '../components/ChatDrawer'
+import JoinLessonButton from '../components/JoinLessonButton'
 import './StudentLayout.css'
 import '../styles/workspace.css'
 
@@ -55,6 +56,7 @@ export default function StudentLayout({
       </aside>
       <div className="student-shell__main">
         <header className="student-shell__top">
+          <JoinLessonButton />
           <button
             type="button"
             className="student-shell__chat"
