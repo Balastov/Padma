@@ -1,5 +1,5 @@
-import type { WordStatus } from './types'
-import { seed } from './mock/seed'
+import type { WordStatus, VocabWord } from './types'
+import { getCachedCatalog } from './catalogStore'
 
 const KEY = 'padma-word-progress'
 
@@ -12,17 +12,7 @@ function load(): ProgressMap {
   } catch {
     /* ignore */
   }
-  const initial: ProgressMap = {}
-  for (const w of seed.words) {
-    if (seed.revisitWordIds.includes(w.id)) initial[w.id] = 'reviewing'
-    else if (w.id === 'w-ticket' || w.id === 'w-luggage') initial[w.id] = 'new'
-    else if (w.lessonIds.includes('vl-12')) initial[w.id] = 'mastered'
-    else initial[w.id] = 'learning'
-  }
-  initial['w-departure'] = 'reviewing'
-  initial['w-ticket'] = 'new'
-  initial['w-book'] = 'mastered'
-  return initial
+  return {}
 }
 
 function save(map: ProgressMap) {
@@ -72,8 +62,7 @@ export function statusLabel(status: WordStatus) {
   return 'Новое'
 }
 
-export function revisitWords() {
-  return seed.words.filter(
-    (w) => getWordStatus(w.id) === 'reviewing' || seed.revisitWordIds.includes(w.id),
-  )
+export function revisitWords(): VocabWord[] {
+  const words = getCachedCatalog()?.words || []
+  return words.filter((w) => getWordStatus(w.id) === 'reviewing')
 }

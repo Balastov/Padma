@@ -1,5 +1,4 @@
 import type { Collection } from './types'
-import { seed } from './mock/seed'
 
 const KEY = 'padma-collections'
 
@@ -10,7 +9,7 @@ export function loadCollections(): Collection[] {
   } catch {
     /* ignore */
   }
-  return structuredClone(seed.defaultCollections)
+  return []
 }
 
 export function saveCollections(list: Collection[]) {

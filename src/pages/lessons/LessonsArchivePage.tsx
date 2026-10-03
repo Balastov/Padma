@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, dateKey, friendlyDate, moscowToday } from '../../api'
 import type { Lesson } from '../../api'
-import { seed } from '../../student/mock/seed'
+import { useCatalog } from '../../student/useCatalog'
 import './LessonsArchive.css'
 
 export default function LessonsArchivePage() {
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [error, setError] = useState('')
+  const { catalog } = useCatalog()
   const today = dateKey(moscowToday())
   useEffect(() => {
     api<Lesson[]>('/lessons')
@@ -17,6 +18,7 @@ export default function LessonsArchivePage() {
   const past = lessons
     .filter((l) => l.date < today)
     .sort((a, b) => b.date.localeCompare(a.date))
+  const vocabLessons = catalog?.lessons || []
   return (
     <div className="lessons-archive">
       <header className="page-heading">
@@ -43,9 +45,9 @@ export default function LessonsArchivePage() {
             Прошедших уроков пока нет. Текущие и будущие — на странице «Сегодня».
           </p>
         )}
-        {seed.vocabLessons.map((vl) => (
+        {vocabLessons.map((vl) => (
           <Link
-            key={vl.id}
+            key={'v-' + vl.id}
             to={`/words/dictionary/lessons/${vl.id}`}
             className="glass-panel lessons-archive__card"
           >
@@ -62,14 +64,14 @@ export default function LessonsArchivePage() {
 export function LessonDetailPage() {
   const { lessonId } = useParams()
   const [lesson, setLesson] = useState<Lesson | null>(null)
+  const { catalog } = useCatalog()
   useEffect(() => {
     api<Lesson[]>('/lessons')
       .then((list) => setLesson(list.find((l) => l.id === lessonId) || null))
       .catch(() => setLesson(null))
   }, [lessonId])
-  const vocab = seed.vocabLessons.find((v) => v.id === lessonId)
-  if (!lesson && !vocab)
-    return <p className="empty-state">Урок не найден.</p>
+  const vocab = catalog?.lessons.find((v) => v.id === lessonId)
+  if (!lesson && !vocab) return <p className="empty-state">Урок не найден.</p>
   return (
     <div className="lesson-detail">
       <header className="page-heading">
@@ -78,31 +80,18 @@ export function LessonDetailPage() {
           <p>
             {lesson
               ? friendlyDate(lesson.date)
-              : vocab?.date}{' '}
-            · архив занятия
+              : vocab?.date || 'Лексика занятия'}
           </p>
         </div>
       </header>
-      <section className="glass-panel lesson-detail__grid">
-        <div>
-          <h2>Тема</h2>
-          <p>{lesson?.title || vocab?.title}</p>
-        </div>
-        <div>
-          <h2>Домашняя работа</h2>
-          <p>Смотрите актуальные задания на «Сегодня».</p>
-        </div>
-        <div>
-          <h2>Слова урока</h2>
-          <Link to={`/words/dictionary/lessons/${vocab?.id || 'vl-12'}`}>
-            Открыть лексику
+      {vocab && vocab.wordIds.length > 0 && (
+        <p>
+          <Link to={`/words/dictionary/lessons/${vocab.id}`}>
+            Слова урока · {vocab.wordIds.length}
           </Link>
-        </div>
-        <div>
-          <h2>Материалы</h2>
-          <Link to="/library">Библиотека</Link>
-        </div>
-      </section>
+        </p>
+      )}
+      {lesson?.note && <p className="notice">{lesson.note}</p>}
     </div>
   )
 }

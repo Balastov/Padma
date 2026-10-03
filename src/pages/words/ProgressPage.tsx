@@ -1,9 +1,10 @@
 import { WordAudioButton } from './WordAudioButton'
 import { progressCounts, revisitWords } from '../../student/progressStore'
-import { seed } from '../../student/mock/seed'
+import { useCatalog } from '../../student/useCatalog'
 import './ProgressPage.css'
 
 export default function ProgressPage() {
+  useCatalog()
   const counts = progressCounts()
   const revisit = revisitWords()
   const days = Array.from({ length: 30 }, (_, i) => {
@@ -95,7 +96,7 @@ export default function ProgressPage() {
           </tbody>
         </table>
         <p className="caption">
-          Уровень цели: {seed.level.current} → {seed.level.goal}
+          Уровень цели появится после диагностики с учителем
         </p>
       </section>
     </div>

@@ -8,6 +8,8 @@ import {
   Settings,
   Users,
   BookOpen,
+  Languages,
+  Library,
 } from 'lucide-react'
 import {
   api,
@@ -29,6 +31,14 @@ import Calendar from '../components/Calendar'
 import Messages from '../components/Messages'
 import UsersPage from './UsersPage'
 import EventPage from './EventPage'
+import LexiconLayout from './teacher/lexicon/LexiconLayout'
+import DictionaryAllPage from './teacher/lexicon/DictionaryAllPage'
+import TopicsManagePage from './teacher/lexicon/TopicsManagePage'
+import LessonWordsManagePage from './teacher/lexicon/LessonWordsManagePage'
+import CollectionsManagePage from './teacher/lexicon/CollectionsManagePage'
+import WordEditPage from './teacher/lexicon/WordEditPage'
+import TrainerAssignPage from './teacher/lexicon/TrainerAssignPage'
+import ProgressStubPage from './teacher/lexicon/ProgressStubPage'
 import '../styles/workspace.css'
 
 type Props = {
@@ -124,6 +134,22 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
           >
             <BookOpen size={23} />
             <span>Домашние задания</span>
+          </NavLink>
+          <NavLink
+            to="/teacher/lexicon"
+            aria-label="Лексика"
+            title="Лексика"
+          >
+            <Languages size={23} />
+            <span>Лексика</span>
+          </NavLink>
+          <NavLink
+            to="/teacher/library"
+            aria-label="Библиотека"
+            title="Библиотека"
+          >
+            <Library size={23} />
+            <span>Библиотека</span>
           </NavLink>
           <NavLink
             to="/teacher/settings"
@@ -287,6 +313,114 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                   profile
                   onUserChange={onUserChange}
                 />
+              }
+            />
+            <Route path="lexicon" element={<LexiconLayout />}>
+              <Route
+                index
+                element={<Navigate to="dictionary" replace />}
+              />
+              <Route
+                path="dictionary"
+                element={
+                  <DictionaryAllPage
+                    students={
+                      isManager(user)
+                        ? students
+                        : students.filter((s) => s.teacherId === user.id)
+                    }
+                  />
+                }
+              />
+              <Route
+                path="dictionary/topics"
+                element={
+                  <TopicsManagePage
+                    students={
+                      isManager(user)
+                        ? students
+                        : students.filter((s) => s.teacherId === user.id)
+                    }
+                  />
+                }
+              />
+              <Route
+                path="dictionary/lessons"
+                element={
+                  <LessonWordsManagePage
+                    students={
+                      isManager(user)
+                        ? students
+                        : students.filter((s) => s.teacherId === user.id)
+                    }
+                  />
+                }
+              />
+              <Route
+                path="dictionary/collections"
+                element={
+                  <CollectionsManagePage
+                    students={
+                      isManager(user)
+                        ? students
+                        : students.filter((s) => s.teacherId === user.id)
+                    }
+                  />
+                }
+              />
+              <Route
+                path="dictionary/words/:wordId"
+                element={<WordEditPage />}
+              />
+              <Route
+                path="trainer"
+                element={
+                  <TrainerAssignPage
+                    students={
+                      isManager(user)
+                        ? students
+                        : students.filter((s) => s.teacherId === user.id)
+                    }
+                  />
+                }
+              />
+              <Route
+                path="progress"
+                element={
+                  <ProgressStubPage
+                    students={
+                      isManager(user)
+                        ? students
+                        : students.filter((s) => s.teacherId === user.id)
+                    }
+                  />
+                }
+              />
+            </Route>
+            <Route
+              path="library"
+              element={
+                <div className="glass-panel" style={{ padding: 24 }}>
+                  <h1>Библиотека</h1>
+                  <p className="caption">
+                    Заглушка. Раздел материалов для учителя будет связан с
+                    библиотекой ученика.
+                  </p>
+                  <p
+                    aria-hidden="true"
+                    style={{
+                      marginTop: 48,
+                      textAlign: 'center',
+                      fontWeight: 800,
+                      letterSpacing: '0.2em',
+                      textTransform: 'uppercase',
+                      color: '#1a2a6e22',
+                      transform: 'rotate(-12deg)',
+                    }}
+                  >
+                    Заглушка
+                  </p>
+                </div>
               }
             />
             <Route path="*" element={<Navigate to="/teacher" replace />} />

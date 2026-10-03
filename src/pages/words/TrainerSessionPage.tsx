@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Check, Circle } from 'lucide-react'
-import { getWord, getWordsByIds } from '../../student/mock/seed'
+import { getWord, getWordsByIds, loadCatalog } from '../../student/catalogStore'
 import { EXERCISE_META } from '../../student/types'
 import {
   getSession,
@@ -28,10 +28,12 @@ export default function TrainerSessionPage() {
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
-    const s = getSession(sessionId || '')
-    if (!s) return
-    setSession(s)
-    setElapsed(s.elapsedSec)
+    void loadCatalog().then(() => {
+      const s = getSession(sessionId || '')
+      if (!s) return
+      setSession(s)
+      setElapsed(s.elapsedSec)
+    })
   }, [sessionId])
 
   useEffect(() => {

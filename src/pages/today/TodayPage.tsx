@@ -22,6 +22,7 @@ import Avatar from '../../components/Avatar'
 import Homework from '../../components/Homework'
 import { revisitWords } from '../../student/progressStore'
 import { playWordAudio } from '../../student/audio'
+import { useCatalog } from '../../student/useCatalog'
 import '../DashboardPage.css'
 import './TodayPage.css'
 
@@ -33,6 +34,7 @@ export default function TodayPage({ user }: { user: User }) {
   const [anchor, setAnchor] = useState(moscowToday)
   const [selectedDay, setSelectedDay] = useState('')
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  useCatalog()
   const revisit = revisitWords().slice(0, 5)
 
   const load = useCallback(async () => {

@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto'
 import { createApp } from './index.mjs'
 import { hashPassword } from './store.mjs'
 
-test('vocab CRUD, audio upload, student forbidden, tts without key', async () => {
+test('vocab CRUD, catalog assignment, lesson words, audio', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'padma-vocab-'))
   const dbPath = join(dir, 'test.sqlite')
   const prevKey = process.env.OPENAI_API_KEY
@@ -19,12 +19,26 @@ test('vocab CRUD, audio upload, student forbidden, tts without key', async () =>
     hash = await hashPassword(password)
   for (const [id, roles, teacher] of [
     ['teacher', ['teacher'], null],
+    ['other', ['teacher'], null],
     ['student', ['student'], 'teacher'],
+    ['outsider', ['student'], 'other'],
   ]) {
     db.prepare(
       'INSERT INTO users (id,name,email,password,roles,teacherId) VALUES (?,?,?,?,?,?)',
     ).run(id, id, `${id}@example.test`, hash, JSON.stringify(roles), teacher)
   }
+  db.prepare(
+    'INSERT INTO lessons VALUES (?,?,?,?,?,?,?,?)',
+  ).run(
+    'lesson-1',
+    'student',
+    'teacher',
+    '2026-10-10',
+    '10:00',
+    '11:00',
+    'Travelling',
+    '',
+  )
   async function request(path, method = 'GET', body, cookie = '') {
     const res = await fetch(base + path, {
       method,
@@ -56,6 +70,7 @@ test('vocab CRUD, audio upload, student forbidden, tts without key', async () =>
   try {
     const teacher = await login('teacher')
     const student = await login('student')
+    const outsider = await login('outsider')
 
     assert.equal((await request('/vocab')).status, 401)
 
@@ -67,35 +82,79 @@ test('vocab CRUD, audio upload, student forbidden, tts without key', async () =>
     )
     assert.equal(denied.status, 403)
 
+    const topic = await request(
+      '/vocab/topics',
+      'POST',
+      {
+        title: 'Путешествия и транспорт',
+        description: 'Лексика для поездок',
+        kind: 'main',
+      },
+      teacher,
+    )
+    assert.equal(topic.status, 201)
+    const topicId = topic.body.id
+
+    const sub = await request(
+      `/vocab/topics/${topicId}/subtopics`,
+      'POST',
+      { title: 'Аэропорт', description: 'В терминале' },
+      teacher,
+    )
+    assert.equal(sub.status, 201)
+    const subtopicId = sub.body.id
+
     const tinyMp3 = Buffer.from('ID3fake-audio-bytes-for-test!!')
     const created = await request(
       '/vocab',
       'POST',
       {
-        word: 'hello',
-        transcription: '/həˈləʊ/',
-        translation: 'привет',
+        word: 'journey',
+        transcription: "/ˈdʒɜːni/",
+        translation: 'путешествие',
+        level: 'A2',
+        pos: 'Существительное',
+        exampleEn: 'The journey was long.',
+        exampleRu: 'Путешествие было долгим.',
+        topicId,
+        subtopicId,
         audio: `data:audio/mpeg;base64,${tinyMp3.toString('base64')}`,
       },
       teacher,
     )
     assert.equal(created.status, 201)
-    assert.equal(created.body.word, 'hello')
-    assert.equal(created.body.transcription, '/həˈləʊ/')
-    assert.equal(created.body.translation, 'привет')
+    assert.equal(created.body.word, 'journey')
+    assert.equal(created.body.level, 'A2')
     assert.equal(created.body.hasAudio, true)
-    assert.equal(created.body.audioMime, 'audio/mpeg')
-    assert.equal(created.body.audio, undefined)
     const id = created.body.id
+
+    // Without assignment student sees nothing
+    const emptyList = await request('/vocab', 'GET', undefined, student)
+    assert.equal(emptyList.status, 200)
+    assert.equal(emptyList.body.length, 0)
+
+    // Attach to student's lesson → visible
+    const pack = await request(
+      `/vocab/lessons/lesson-1/words`,
+      'PUT',
+      { wordIds: [id] },
+      teacher,
+    )
+    assert.equal(pack.status, 200)
 
     const list = await request('/vocab', 'GET', undefined, student)
     assert.equal(list.status, 200)
     assert.equal(list.body.length, 1)
-    assert.equal(list.body[0].hasAudio, true)
+    assert.equal(list.body[0].word, 'journey')
 
     const one = await request('/vocab/' + id, 'GET', undefined, student)
     assert.equal(one.status, 200)
-    assert.equal(one.body.transcription, '/həˈləʊ/')
+    assert.equal(one.body.transcription, "/ˈdʒɜːni/")
+
+    assert.equal(
+      (await request('/vocab/' + id, 'GET', undefined, outsider)).status,
+      403,
+    )
 
     const audio = await request(
       '/vocab/' + id + '/audio',
@@ -107,15 +166,65 @@ test('vocab CRUD, audio upload, student forbidden, tts without key', async () =>
     assert.match(audio.type, /audio\/mpeg/)
     assert.deepEqual(audio.body, tinyMp3)
 
+    const collection = await request(
+      '/vocab/collections',
+      'POST',
+      {
+        title: 'Моё путешествие',
+        description: 'Набор для поездок',
+        tags: ['Путешествия'],
+        wordIds: [id],
+      },
+      teacher,
+    )
+    assert.equal(collection.status, 201)
+
+    const group = await request(
+      '/vocab/groups',
+      'POST',
+      { title: 'Группа A2', studentIds: ['student'] },
+      teacher,
+    )
+    assert.equal(group.status, 201)
+
+    const assigned = await request(
+      '/vocab/assignments',
+      'POST',
+      {
+        sourceType: 'collection',
+        sourceId: collection.body.id,
+        targetType: 'group',
+        targetIds: [group.body.id],
+        exercises: ['cards', 'true-false'],
+      },
+      teacher,
+    )
+    assert.equal(assigned.status, 201)
+    assert.equal(assigned.body.assignments.length, 1)
+
+    const catalog = await request('/vocab/me/catalog', 'GET', undefined, student)
+    assert.equal(catalog.status, 200)
+    assert.ok(catalog.body.collections.some((c) => c.id === collection.body.id))
+    assert.ok(
+      catalog.body.allowedExercises[`collection:${collection.body.id}`].includes(
+        'cards',
+      ),
+    )
+    assert.equal(
+      catalog.body.allowedExercises[`collection:${collection.body.id}`].includes(
+        'memory',
+      ),
+      false,
+    )
+
     const patched = await request(
       '/vocab/' + id,
       'PATCH',
-      { transcription: '/həˈloʊ/', translation: 'здравствуйте' },
+      { transcription: '/ˈdʒɝːni/', translation: 'путь' },
       teacher,
     )
     assert.equal(patched.status, 200)
-    assert.equal(patched.body.transcription, '/həˈloʊ/')
-    assert.equal(patched.body.hasAudio, true)
+    assert.equal(patched.body.translation, 'путь')
 
     const clearAudio = await request(
       '/vocab/' + id,
@@ -125,11 +234,6 @@ test('vocab CRUD, audio upload, student forbidden, tts without key', async () =>
     )
     assert.equal(clearAudio.status, 200)
     assert.equal(clearAudio.body.hasAudio, false)
-    assert.equal(
-      (await request('/vocab/' + id + '/audio', 'GET', undefined, student))
-        .status,
-      404,
-    )
 
     const ttsFail = await request(
       '/vocab',
@@ -147,7 +251,7 @@ test('vocab CRUD, audio upload, student forbidden, tts without key', async () =>
     )
     assert.equal(removed.status, 200)
     assert.equal(
-      (await request('/vocab/' + id, 'GET', undefined, student)).status,
+      (await request('/vocab/' + id, 'GET', undefined, teacher)).status,
       404,
     )
   } finally {

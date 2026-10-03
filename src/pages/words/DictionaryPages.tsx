@@ -1,7 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import { ChevronRight, Play, Search } from 'lucide-react'
-import { seed, getWord, getWordsByIds, searchWords } from '../../student/mock/seed'
+import {
+  getWord,
+  getWordsByIds,
+  searchWords,
+} from '../../student/catalogStore'
+import { useCatalog } from '../../student/useCatalog'
 import {
   getWordStatus,
   statusLabel,
@@ -23,21 +28,42 @@ function WordCard({ word }: { word: VocabWord }) {
           <p className="ipa">{word.transcription}</p>
           <p className="word-card__tr">{word.translation}</p>
         </div>
-        <WordAudioButton word={word.word} />
+        <WordAudioButton word={word.word} vocabId={word.id} />
       </div>
       <div className="word-card__tags">
-        <span className="status-pill status-pill--learning">{word.pos}</span>
-        <span className="status-pill status-pill--mastered">{word.level}</span>
+        {word.pos && (
+          <span className="status-pill status-pill--learning">{word.pos}</span>
+        )}
+        {word.level && (
+          <span className="status-pill status-pill--mastered">{word.level}</span>
+        )}
       </div>
-      <div className="word-card__example">
-        <small>Пример</small>
-        <p>
-          {word.exampleEn} <ExampleAudioButton text={word.exampleEn} />
-        </p>
-        <p className="secondary">{word.exampleRu}</p>
-      </div>
+      {(word.exampleEn || word.exampleRu) && (
+        <div className="word-card__example">
+          <small>Пример</small>
+          {word.exampleEn && (
+            <p>
+              {word.exampleEn} <ExampleAudioButton text={word.exampleEn} />
+            </p>
+          )}
+          {word.exampleRu && <p className="secondary">{word.exampleRu}</p>}
+        </div>
+      )}
     </article>
   )
+}
+
+function CatalogGate({ children }: { children: ReactNode }) {
+  const { catalog, error, loading } = useCatalog()
+  if (loading) return <p role="status">Загружаем словарь…</p>
+  if (error)
+    return (
+      <p className="error" role="alert">
+        {error}
+      </p>
+    )
+  if (!catalog) return null
+  return <>{children}</>
 }
 
 export default function DictionaryHub() {
@@ -52,14 +78,20 @@ export default function DictionaryHub() {
         <NavLink to="/words/dictionary/lessons">Слова уроков</NavLink>
         <NavLink to="/words/dictionary/collections">Коллекции</NavLink>
       </div>
-      <GlobalSearch />
+      <CatalogGate>
+        <GlobalSearch />
+      </CatalogGate>
     </div>
   )
 }
 
 function GlobalSearch() {
+  const { catalog } = useCatalog()
   const [q, setQ] = useState('')
-  const found = useMemo(() => (q.trim() ? searchWords(q).slice(0, 12) : []), [q])
+  const found = useMemo(
+    () => (q.trim() && catalog ? searchWords(q).slice(0, 12) : []),
+    [q, catalog],
+  )
   return (
     <div className="dict-search-block glass-panel">
       <div className="words-search">
@@ -84,7 +116,7 @@ function GlobalSearch() {
                 <span className="ipa">{w.transcription}</span>
                 <small>{w.translation}</small>
               </Link>
-              <WordAudioButton word={w.word} />
+              <WordAudioButton word={w.word} vocabId={w.id} />
             </li>
           ))}
           {!found.length && <li className="empty-state">Ничего не найдено</li>}
@@ -95,9 +127,18 @@ function GlobalSearch() {
 }
 
 export function TopicsPage() {
+  return (
+    <CatalogGate>
+      <TopicsPageInner />
+    </CatalogGate>
+  )
+}
+
+function TopicsPageInner() {
   const navigate = useNavigate()
-  const main = seed.topics.filter((t) => t.kind === 'main')
-  const lexical = seed.topics.filter((t) => t.kind === 'lexical')
+  const { catalog } = useCatalog()
+  const main = catalog!.topics.filter((t) => t.kind === 'main')
+  const lexical = catalog!.topics.filter((t) => t.kind === 'lexical')
   return (
     <div className="dict-page">
       <DictionaryChrome />
@@ -107,28 +148,44 @@ export function TopicsPage() {
           <ul>
             {main.map((t) => (
               <li key={t.id}>
-                <button type="button" onClick={() => navigate(`/words/dictionary/topics/${t.id}`)}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/words/dictionary/topics/${t.id}`)}
+                >
                   <strong>{t.title}</strong>
                   <ChevronRight size={18} />
                 </button>
               </li>
             ))}
+            {!main.length && (
+              <li className="empty-state">
+                Пока нет назначенных тем. Учитель откроет их здесь.
+              </li>
+            )}
           </ul>
           <h2>Лексические группы</h2>
           <ul>
             {lexical.map((t) => (
               <li key={t.id}>
-                <button type="button" onClick={() => navigate(`/words/dictionary/topics/${t.id}`)}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/words/dictionary/topics/${t.id}`)}
+                >
                   <strong>{t.title}</strong>
                   <ChevronRight size={18} />
                 </button>
               </li>
             ))}
+            {!lexical.length && (
+              <li className="empty-state">Лексические группы появятся позже</li>
+            )}
           </ul>
         </section>
         <section className="glass-panel topics-hint">
           <h2>Выберите тему</h2>
-          <p>Откройте тему, затем подтему — и переходите к словам или тренажёру.</p>
+          <p>
+            Откройте тему, затем подтему — и переходите к словам или тренажёру.
+          </p>
         </section>
       </div>
     </div>
@@ -136,10 +193,19 @@ export function TopicsPage() {
 }
 
 export function TopicDetailPage() {
+  return (
+    <CatalogGate>
+      <TopicDetailInner />
+    </CatalogGate>
+  )
+}
+
+function TopicDetailInner() {
   const { topicId } = useParams()
-  const topic = seed.topics.find((t) => t.id === topicId)
+  const { catalog } = useCatalog()
+  const topic = catalog!.topics.find((t) => t.id === topicId)
   if (!topic) return <p className="empty-state">Тема не найдена</p>
-  const subs = seed.subtopics.filter((s) => s.topicId === topic.id)
+  const subs = catalog!.subtopics.filter((s) => s.topicId === topic.id)
   const total = subs.reduce((n, s) => n + s.wordIds.length, 0)
   return (
     <div className="dict-page">
@@ -148,7 +214,9 @@ export function TopicDetailPage() {
         <section className="glass-panel topic-hero">
           <h2>{topic.title}</h2>
           <p>{topic.description}</p>
-          <p className="caption">{total} слов · {subs.length} подтем</p>
+          <p className="caption">
+            {total} слов · {subs.length} подтем
+          </p>
           <ul className="subtopic-list">
             {subs.map((s) => (
               <li key={s.id}>
@@ -185,11 +253,23 @@ export function TopicDetailPage() {
 }
 
 export function SubtopicWordsPage() {
+  return (
+    <CatalogGate>
+      <SubtopicWordsInner />
+    </CatalogGate>
+  )
+}
+
+function SubtopicWordsInner() {
   const { topicId, subtopicId } = useParams()
-  const topic = seed.topics.find((t) => t.id === topicId)
-  const sub = seed.subtopics.find((s) => s.id === subtopicId)
+  const { catalog } = useCatalog()
+  const topic = catalog!.topics.find((t) => t.id === topicId)
+  const sub = catalog!.subtopics.find((s) => s.id === subtopicId)
   const words = getWordsByIds(sub?.wordIds || [])
   const [selected, setSelected] = useState(words[0]?.id || '')
+  useEffect(() => {
+    if (!selected && words[0]) setSelected(words[0].id)
+  }, [words, selected])
   const current = getWord(selected) || words[0]
   if (!topic || !sub) return <p className="empty-state">Подтема не найдена</p>
   return (
@@ -200,31 +280,37 @@ export function SubtopicWordsPage() {
           <h2>Слова темы · {words.length}</h2>
           <ul className="word-rows">
             {words.map((w) => (
-              <li key={w.id} className={w.id === current?.id ? 'is-active' : ''}>
+              <li
+                key={w.id}
+                className={w.id === current?.id ? 'is-active' : ''}
+              >
                 <button type="button" onClick={() => setSelected(w.id)}>
                   <strong>{w.word}</strong>
                   <span className="ipa">{w.transcription}</span>
                   <small>{w.translation}</small>
                 </button>
-                <WordAudioButton word={w.word} />
+                <WordAudioButton word={w.word} vocabId={w.id} />
               </li>
             ))}
           </ul>
         </section>
         {current && <WordCard word={current} />}
         <section className="glass-panel words-col">
-          <h2>Похожие слова</h2>
+          <h2>В этой подтеме</h2>
           <ul className="word-rows">
-            {getWordsByIds(current?.relatedIds || []).map((w) => (
-              <li key={w.id}>
-                <button type="button" onClick={() => setSelected(w.id)}>
-                  <strong>{w.word}</strong>
-                  <span className="ipa">{w.transcription}</span>
-                  <small>{w.translation}</small>
-                </button>
-                <WordAudioButton word={w.word} />
-              </li>
-            ))}
+            {words
+              .filter((w) => w.id !== current?.id)
+              .slice(0, 8)
+              .map((w) => (
+                <li key={w.id}>
+                  <button type="button" onClick={() => setSelected(w.id)}>
+                    <strong>{w.word}</strong>
+                    <span className="ipa">{w.transcription}</span>
+                    <small>{w.translation}</small>
+                  </button>
+                  <WordAudioButton word={w.word} vocabId={w.id} />
+                </li>
+              ))}
           </ul>
         </section>
       </div>
@@ -233,8 +319,17 @@ export function SubtopicWordsPage() {
 }
 
 export function LessonsWordsPage() {
+  return (
+    <CatalogGate>
+      <LessonsWordsInner />
+    </CatalogGate>
+  )
+}
+
+function LessonsWordsInner() {
   const { lessonId } = useParams()
-  const lessons = seed.vocabLessons
+  const { catalog } = useCatalog()
+  const lessons = catalog!.lessons
   const active = lessons.find((l) => l.id === lessonId) || lessons[0]
   const words = getWordsByIds(active?.wordIds || [])
   const counts = {
@@ -251,7 +346,7 @@ export function LessonsWordsPage() {
       <DictionaryChrome tab="lessons" />
       <div className="lessons-words">
         <section className="glass-panel words-col">
-          <h2>Уроки курса · {lessons.length}</h2>
+          <h2>Уроки · {lessons.length}</h2>
           <ul className="lesson-pick">
             {lessons.map((l) => (
               <li key={l.id}>
@@ -263,6 +358,11 @@ export function LessonsWordsPage() {
                 </NavLink>
               </li>
             ))}
+            {!lessons.length && (
+              <li className="empty-state">
+                Слова появятся, когда учитель добавит их к вашим занятиям.
+              </li>
+            )}
           </ul>
         </section>
         {active && (
@@ -270,7 +370,7 @@ export function LessonsWordsPage() {
             <div className="lesson-words-detail__head">
               <div>
                 <h2>{active.title}</h2>
-                <p>{active.description}</p>
+                <p>{active.description || 'Слова к занятию'}</p>
               </div>
               <div className="progress-ring" aria-label={`${pct}%`}>
                 <strong>{pct}%</strong>
@@ -303,7 +403,7 @@ export function LessonsWordsPage() {
                       <td>{w.translation}</td>
                       <td className="ipa">{w.transcription}</td>
                       <td>
-                        <WordAudioButton word={w.word} />
+                        <WordAudioButton word={w.word} vocabId={w.id} />
                       </td>
                       <td>
                         <span className={`status-pill status-pill--${st}`}>
@@ -315,12 +415,14 @@ export function LessonsWordsPage() {
                 })}
               </tbody>
             </table>
-            <Link
-              className="button-primary"
-              to={`/words/trainer?source=lesson&id=${active.id}`}
-            >
-              <Play size={18} /> В тренажёр
-            </Link>
+            {words.length > 0 && (
+              <Link
+                className="button-primary"
+                to={`/words/trainer?source=lesson&id=${active.id}`}
+              >
+                <Play size={18} /> В тренажёр
+              </Link>
+            )}
           </section>
         )}
       </div>
@@ -329,48 +431,76 @@ export function LessonsWordsPage() {
 }
 
 export function CollectionsPage() {
-  const [list, setList] = useState(loadCollections)
-  const [selected, setSelected] = useState(list[0]?.id || '')
+  return (
+    <CatalogGate>
+      <CollectionsInner />
+    </CatalogGate>
+  )
+}
+
+function CollectionsInner() {
+  const { catalog } = useCatalog()
+  const assigned = catalog!.collections
+  const [personal, setPersonal] = useState(loadCollections)
+  const [selected, setSelected] = useState(
+    assigned[0]?.id || personal[0]?.id || '',
+  )
   const [title, setTitle] = useState('')
-  const current = list.find((c) => c.id === selected) || list[0]
+  const current =
+    assigned.find((c) => c.id === selected) ||
+    personal.find((c) => c.id === selected) ||
+    assigned[0] ||
+    personal[0]
+  const isPersonal = current
+    ? personal.some((c) => c.id === current.id)
+    : false
+
   function create() {
     if (!title.trim()) return
     const next = [
-      ...list,
+      ...personal,
       {
         id: crypto.randomUUID(),
         title: title.trim(),
         description: 'Ваша коллекция',
-        wordIds: [],
-        tags: [],
+        wordIds: [] as string[],
+        tags: [] as string[],
         updated: new Date().toISOString().slice(0, 10),
       },
     ]
-    setList(next)
+    setPersonal(next)
     saveCollections(next)
     setTitle('')
   }
   function remove(id: string) {
-    const next = list.filter((c) => c.id !== id)
-    setList(next)
+    const next = personal.filter((c) => c.id !== id)
+    setPersonal(next)
     saveCollections(next)
-    setSelected(next[0]?.id || '')
+    setSelected(assigned[0]?.id || next[0]?.id || '')
   }
+
   return (
     <div className="dict-page">
       <DictionaryChrome tab="collections" />
       <div className="collections-layout">
         <section className="collections-grid">
-          {list.map((c) => (
+          {assigned.map((c) => (
             <article
               key={c.id}
-              className={`glass-panel collection-card${c.id === current?.id ? ' is-active' : ''}`}
+              className={
+                'glass-panel collection-card' +
+                (c.id === current?.id ? ' is-active' : '')
+              }
             >
-              <button type="button" className="collection-card__main" onClick={() => setSelected(c.id)}>
+              <button
+                type="button"
+                className="collection-card__main"
+                onClick={() => setSelected(c.id)}
+              >
                 <strong>{c.title}</strong>
                 <p>{c.description}</p>
                 <small>
-                  {c.wordIds.length} слов · {c.updated}
+                  {c.wordIds.length} слов · от учителя
                 </small>
               </button>
               <div className="collection-card__actions">
@@ -389,13 +519,46 @@ export function CollectionsPage() {
               </div>
             </article>
           ))}
+          {personal.map((c) => (
+            <article
+              key={c.id}
+              className={
+                'glass-panel collection-card' +
+                (c.id === current?.id ? ' is-active' : '')
+              }
+            >
+              <button
+                type="button"
+                className="collection-card__main"
+                onClick={() => setSelected(c.id)}
+              >
+                <strong>{c.title}</strong>
+                <p>{c.description}</p>
+                <small>
+                  {c.wordIds.length} слов · {c.updated}
+                </small>
+              </button>
+              <div className="collection-card__actions">
+                <Link
+                  className="button-secondary button-small"
+                  to={`/words/dictionary/collections/${c.id}`}
+                >
+                  Открыть
+                </Link>
+              </div>
+            </article>
+          ))}
           <div className="glass-panel collection-new">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Новая коллекция"
+              placeholder="Новая личная коллекция"
             />
-            <button type="button" className="button-primary button-small" onClick={create}>
+            <button
+              type="button"
+              className="button-primary button-small"
+              onClick={create}
+            >
               Создать
             </button>
           </div>
@@ -412,17 +575,19 @@ export function CollectionsPage() {
                     <strong>{w.word}</strong>
                     <small>{w.translation}</small>
                   </div>
-                  <WordAudioButton word={w.word} />
+                  <WordAudioButton word={w.word} vocabId={w.id} />
                 </li>
               ))}
             </ul>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => remove(current.id)}
-            >
-              Удалить коллекцию
-            </button>
+            {isPersonal && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => remove(current.id)}
+              >
+                Удалить коллекцию
+              </button>
+            )}
           </aside>
         )}
       </div>
@@ -431,9 +596,19 @@ export function CollectionsPage() {
 }
 
 export function CollectionDetailPage() {
+  return (
+    <CatalogGate>
+      <CollectionDetailInner />
+    </CatalogGate>
+  )
+}
+
+function CollectionDetailInner() {
   const { collectionId } = useParams()
-  const list = loadCollections()
-  const c = list.find((x) => x.id === collectionId)
+  const { catalog } = useCatalog()
+  const c =
+    catalog!.collections.find((x) => x.id === collectionId) ||
+    loadCollections().find((x) => x.id === collectionId)
   if (!c) return <p className="empty-state">Коллекция не найдена</p>
   return (
     <div className="dict-page">
@@ -457,7 +632,7 @@ export function CollectionDetailPage() {
                 <td>{w.translation}</td>
                 <td className="ipa">{w.transcription}</td>
                 <td>
-                  <WordAudioButton word={w.word} />
+                  <WordAudioButton word={w.word} vocabId={w.id} />
                 </td>
               </tr>
             ))}
@@ -469,6 +644,14 @@ export function CollectionDetailPage() {
 }
 
 export function WordDeepLinkPage() {
+  return (
+    <CatalogGate>
+      <WordDeepLinkInner />
+    </CatalogGate>
+  )
+}
+
+function WordDeepLinkInner() {
   const { wordId } = useParams()
   const word = getWord(wordId || '')
   if (!word) return <p className="empty-state">Слово не найдено</p>
@@ -477,19 +660,6 @@ export function WordDeepLinkPage() {
       <DictionaryChrome />
       <div className="words-triple">
         <WordCard word={word} />
-        <section className="glass-panel words-col">
-          <h2>Связанные</h2>
-          <ul className="word-rows">
-            {getWordsByIds(word.relatedIds).map((w) => (
-              <li key={w.id}>
-                <Link to={`/words/word/${w.id}`}>
-                  <strong>{w.word}</strong>
-                  <span className="ipa">{w.transcription}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
       </div>
     </div>
   )

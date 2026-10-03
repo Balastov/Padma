@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Play } from 'lucide-react'
 import {
@@ -6,7 +6,8 @@ import {
   EXERCISE_META,
   type ExerciseType,
 } from '../../student/types'
-import { seed } from '../../student/mock/seed'
+import { useCatalog } from '../../student/useCatalog'
+import { allowedExercisesFor } from '../../student/catalogStore'
 import { loadCollections } from '../../student/collectionsStore'
 import {
   createSession,
@@ -16,46 +17,97 @@ import { revisitWords } from '../../student/progressStore'
 import './TrainerPage.css'
 
 export default function TrainerHubPage() {
+  const { catalog, loading, error } = useCatalog()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const initialSource =
-    (params.get('source') as 'all' | 'topic' | 'lesson' | 'collection' | 'revisit') ||
-    'all'
+    (params.get('source') as
+      | 'all'
+      | 'topic'
+      | 'lesson'
+      | 'collection'
+      | 'revisit') || 'all'
   const [source, setSource] = useState(initialSource)
-  const [topicId, setTopicId] = useState('travel')
-  const [subId, setSubId] = useState(params.get('id') || 'airport')
-  const [lessonId, setLessonId] = useState(params.get('id') || 'vl-12')
+  const [topicId, setTopicId] = useState('')
+  const [subId, setSubId] = useState(params.get('id') || '')
+  const [lessonId, setLessonId] = useState(params.get('id') || '')
   const [collectionId, setCollectionId] = useState(params.get('id') || '')
-  const collections = loadCollections()
+  const personal = loadCollections()
   const paused = getPausedSession()
 
+  useEffect(() => {
+    if (!catalog) return
+    if (!topicId && catalog.topics[0]) setTopicId(catalog.topics[0].id)
+    if (!subId) {
+      const first = catalog.subtopics.find((s) => s.topicId === catalog.topics[0]?.id)
+      if (first) setSubId(first.id)
+    }
+    if (!lessonId && catalog.lessons[0]) setLessonId(catalog.lessons[0].id)
+    if (!collectionId) {
+      const first = catalog.collections[0] || personal[0]
+      if (first) setCollectionId(first.id)
+    }
+  }, [catalog, topicId, subId, lessonId, collectionId, personal])
+
+  const collections = useMemo(() => {
+    const assigned = catalog?.collections || []
+    const ids = new Set(assigned.map((c) => c.id))
+    return [...assigned, ...personal.filter((c) => !ids.has(c.id))]
+  }, [catalog, personal])
+
   const wordIds = useMemo(() => {
+    if (!catalog) return []
     if (source === 'revisit') return revisitWords().map((w) => w.id)
-    if (source === 'all') return seed.words.map((w) => w.id)
+    if (source === 'all') return catalog.words.map((w) => w.id)
     if (source === 'topic') {
-      const sub = seed.subtopics.find((s) => s.id === subId)
+      const sub = catalog.subtopics.find((s) => s.id === subId)
       return sub?.wordIds || []
     }
     if (source === 'lesson') {
-      return seed.vocabLessons.find((l) => l.id === lessonId)?.wordIds || []
+      return catalog.lessons.find((l) => l.id === lessonId)?.wordIds || []
     }
     if (source === 'collection') {
       return collections.find((c) => c.id === collectionId)?.wordIds || []
     }
     return []
-  }, [source, subId, lessonId, collectionId, collections])
+  }, [catalog, source, subId, lessonId, collectionId, collections])
 
   const sourceLabel = useMemo(() => {
+    if (!catalog) return ''
     if (source === 'revisit') return 'Слова для повторения'
     if (source === 'all') return 'Все слова'
     if (source === 'topic')
-      return seed.subtopics.find((s) => s.id === subId)?.title || 'Тема'
+      return catalog.subtopics.find((s) => s.id === subId)?.title || 'Тема'
     if (source === 'lesson')
-      return seed.vocabLessons.find((l) => l.id === lessonId)?.title || 'Урок'
+      return catalog.lessons.find((l) => l.id === lessonId)?.title || 'Урок'
     return collections.find((c) => c.id === collectionId)?.title || 'Коллекция'
-  }, [source, subId, lessonId, collectionId, collections])
+  }, [catalog, source, subId, lessonId, collectionId, collections])
 
-  const subs = seed.subtopics.filter((s) => s.topicId === topicId)
+  const unlocked = useMemo(() => {
+    if (source === 'revisit' || source === 'all') return ALLOWED_EXERCISES
+    const type =
+      source === 'topic'
+        ? 'subtopic'
+        : source === 'lesson'
+          ? 'lesson'
+          : source === 'collection'
+            ? 'collection'
+            : 'all'
+    const id =
+      source === 'topic'
+        ? subId
+        : source === 'lesson'
+          ? lessonId
+          : source === 'collection'
+            ? collectionId
+            : ''
+    const list = allowedExercisesFor(type, id)
+    if (!list) return ALLOWED_EXERCISES
+    return ALLOWED_EXERCISES.filter((t) => list.includes(t))
+  }, [source, subId, lessonId, collectionId])
+
+  const subs =
+    catalog?.subtopics.filter((s) => s.topicId === topicId) || []
   const canStart = wordIds.length > 0 && (source !== 'topic' || Boolean(subId))
 
   function start(type: ExerciseType) {
@@ -78,6 +130,14 @@ export default function TrainerHubPage() {
   }
 
   const groups = ['Повторение', 'Понимание', 'Аудирование', 'Игровые форматы']
+
+  if (loading) return <p role="status">Загружаем тренажёр…</p>
+  if (error)
+    return (
+      <p className="error" role="alert">
+        {error}
+      </p>
+    )
 
   return (
     <div className="trainer-hub">
@@ -129,19 +189,17 @@ export default function TrainerHubPage() {
                 value={topicId}
                 onChange={(e) => {
                   setTopicId(e.target.value)
-                  const first = seed.subtopics.find(
+                  const first = catalog?.subtopics.find(
                     (s) => s.topicId === e.target.value,
                   )
                   setSubId(first?.id || '')
                 }}
               >
-                {seed.topics
-                  .filter((t) => t.kind === 'main')
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title}
-                    </option>
-                  ))}
+                {(catalog?.topics || []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="field">
@@ -163,7 +221,7 @@ export default function TrainerHubPage() {
               value={lessonId}
               onChange={(e) => setLessonId(e.target.value)}
             >
-              {seed.vocabLessons.map((l) => (
+              {(catalog?.lessons || []).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.title}
                 </option>
@@ -199,22 +257,29 @@ export default function TrainerHubPage() {
             <ul>
               {ALLOWED_EXERCISES.filter(
                 (t) => EXERCISE_META[t].group === group,
-              ).map((type) => (
-                <li key={type}>
-                  <div>
-                    <strong>{EXERCISE_META[type].title}</strong>
-                    <small>{EXERCISE_META[type].description}</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="button-primary button-small"
-                    disabled={!canStart}
-                    onClick={() => start(type)}
-                  >
-                    <Play size={14} /> Начать
-                  </button>
-                </li>
-              ))}
+              ).map((type) => {
+                const open = unlocked.includes(type)
+                return (
+                  <li key={type}>
+                    <div>
+                      <strong>{EXERCISE_META[type].title}</strong>
+                      <small>
+                        {open
+                          ? EXERCISE_META[type].description
+                          : 'Учитель пока не открыл этот формат'}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      className="button-primary button-small"
+                      disabled={!canStart || !open}
+                      onClick={() => start(type)}
+                    >
+                      <Play size={14} /> Начать
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         ))}
