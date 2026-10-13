@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { staff } from './store.mjs'
 
 // Reference lexicon imported from the textbook master table.
@@ -43,6 +43,51 @@ const LABELS = {
   theme: 'Тема',
 }
 
+// Lexicon units point at vocab_topics: one "Тема" entity shared with the
+// teacher's dictionary. lexicon_units.theme keeps a copy of the title for
+// filtering and is synced on rename (see vocab.mjs).
+function ensureTopics(db, titles) {
+  const byKey = new Map()
+  for (const t of db
+    .prepare('SELECT id, title, archived FROM vocab_topics ORDER BY archived')
+    .all())
+    if (!byKey.has(keyOf(t.title))) byKey.set(keyOf(t.title), t)
+  const result = new Map()
+  let owner
+  for (const title of titles) {
+    const key = keyOf(title)
+    const found = byKey.get(key)
+    if (found) {
+      if (found.archived)
+        db.prepare(
+          'UPDATE vocab_topics SET archived=0, updated=? WHERE id=?',
+        ).run(new Date().toISOString(), found.id)
+      result.set(title, found)
+      continue
+    }
+    if (!owner) {
+      const users = db
+        .prepare('SELECT id, roles FROM users WHERE archived=0 ORDER BY rowid')
+        .all()
+        .map((u) => ({ id: u.id, roles: JSON.parse(u.roles) }))
+      for (const role of ['owner', 'admin', 'teacher'])
+        owner ??= users.find((u) => u.roles.includes(role))
+    }
+    if (!owner)
+      throw new Error('Нет преподавателя или владельца, от имени которого создать темы')
+    const now = new Date().toISOString()
+    const topic = { id: randomUUID(), title, archived: 0 }
+    db.prepare(
+      `INSERT INTO vocab_topics
+       (id, title, description, kind, createdBy, created, updated, archived)
+       VALUES (?,?,'','main',?,?,?,0)`,
+    ).run(topic.id, title, owner.id, now, now)
+    byKey.set(key, topic)
+    result.set(title, topic)
+  }
+  return result
+}
+
 export function initLexicon(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS lexicon_books (
@@ -80,6 +125,31 @@ export function initLexicon(db) {
     CREATE INDEX IF NOT EXISTS lexicon_occurrences_term ON lexicon_occurrences(termId);
     CREATE INDEX IF NOT EXISTS lexicon_occurrences_unit ON lexicon_occurrences(unitId);
   `)
+  const columns = db.prepare('PRAGMA table_info(lexicon_units)').all()
+  if (!columns.some((c) => c.name === 'topicId'))
+    db.exec(
+      'ALTER TABLE lexicon_units ADD COLUMN topicId TEXT REFERENCES vocab_topics(id)',
+    )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS lexicon_units_topic ON lexicon_units(topicId)',
+  )
+  const unlinked = db
+    .prepare('SELECT DISTINCT theme FROM lexicon_units WHERE topicId IS NULL')
+    .all()
+    .map((r) => r.theme)
+  if (!unlinked.length) return
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const topics = ensureTopics(db, unlinked)
+    const link = db.prepare(
+      'UPDATE lexicon_units SET topicId=?, theme=? WHERE topicId IS NULL AND theme=?',
+    )
+    for (const [theme, topic] of topics) link.run(topic.id, topic.title, theme)
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
 }
 
 // rows: [{ number, cells: string[] }], first row is the header.
@@ -192,11 +262,17 @@ export function importLexicon(db, rows, { replace = false } = {}) {
     )
     for (const b of books.values())
       insertBook.run(b.id, b.title, b.level, b.sortOrder)
-    const insertUnit = db.prepare(
-      'INSERT INTO lexicon_units (id, bookId, number, theme) VALUES (?,?,?,?)',
+    const topics = ensureTopics(
+      db,
+      [...new Set([...units.values()].map((u) => u.theme))],
     )
-    for (const u of units.values())
-      insertUnit.run(u.id, u.bookId, u.number, u.theme)
+    const insertUnit = db.prepare(
+      'INSERT INTO lexicon_units (id, bookId, number, theme, topicId) VALUES (?,?,?,?,?)',
+    )
+    for (const u of units.values()) {
+      const topic = topics.get(u.theme)
+      insertUnit.run(u.id, u.bookId, u.number, topic.title, topic.id)
+    }
     const insertTerm = db.prepare(
       `INSERT INTO lexicon_terms
        (id, term, termKey, translation, translationKey, transcription, updated)
@@ -313,37 +389,41 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     return true
   }
 
+  // All topics (shared with the teacher dictionary), with textbook units.
   if (path === '/api/lexicon/themes' && req.method === 'GET') {
-    const rows = db
+    const units = db
       .prepare(
-        `SELECT u.theme, u.id, u.bookId, u.number
+        `SELECT u.topicId, u.id, u.bookId, u.number
          FROM lexicon_units u JOIN lexicon_books b ON b.id = u.bookId
-         ORDER BY u.theme COLLATE NOCASE, b.sortOrder, u.number`,
+         ORDER BY b.sortOrder, u.number`,
       )
       .all()
     const counts = new Map(
       db
         .prepare(
-          `SELECT u.theme, count(DISTINCT o.termId) AS n
+          `SELECT u.topicId, count(DISTINCT o.termId) AS n
            FROM lexicon_occurrences o JOIN lexicon_units u ON u.id = o.unitId
-           GROUP BY u.theme`,
+           GROUP BY u.topicId`,
         )
         .all()
-        .map((r) => [r.theme, r.n]),
+        .map((r) => [r.topicId, r.n]),
     )
-    const themes = new Map()
-    for (const row of rows) {
-      if (!themes.has(row.theme))
-        themes.set(row.theme, {
-          title: row.theme,
-          termCount: counts.get(row.theme) || 0,
-          units: [],
-        })
-      themes
-        .get(row.theme)
-        .units.push({ id: row.id, bookId: row.bookId, number: row.number })
-    }
-    send(200, [...themes.values()])
+    const topics = db
+      .prepare(
+        'SELECT id, title FROM vocab_topics WHERE archived=0 ORDER BY title COLLATE NOCASE',
+      )
+      .all()
+    send(
+      200,
+      topics.map((t) => ({
+        id: t.id,
+        title: t.title,
+        termCount: counts.get(t.id) || 0,
+        units: units
+          .filter((u) => u.topicId === t.id)
+          .map(({ id, bookId, number }) => ({ id, bookId, number })),
+      })),
+    )
     return true
   }
 
@@ -409,6 +489,7 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     }
     for (const [sql, value] of [
       ['u.id = ?', clean(params.get('unitId'), 140)],
+      ['u.topicId = ?', clean(params.get('topicId'), 64)],
       ['u.theme = ?', clean(params.get('theme'), 200)],
     ])
       if (value) {
@@ -465,6 +546,7 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     const bookId = clean(params.get('bookId'), 120)
     const unitId = clean(params.get('unitId'), 140)
     const theme = clean(params.get('theme'), 200)
+    const topicId = clean(params.get('topicId'), 64)
     const limit = Math.min(Math.max(Number(params.get('limit')) || 50, 1), 200)
     const offset = Math.max(Number(params.get('offset')) || 0, 0)
     const where = []
@@ -475,12 +557,13 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
       )
       args.push(likeOf(q), likeOf(q))
     }
-    if (bookId || unitId || theme) {
+    if (bookId || unitId || theme || topicId) {
       const filters = []
       for (const [sql, value] of [
         ['u.bookId = ?', bookId],
         ['u.id = ?', unitId],
         ['u.theme = ?', theme],
+        ['u.topicId = ?', topicId],
       ])
         if (value) {
           filters.push(sql)

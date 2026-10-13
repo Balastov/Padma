@@ -13,6 +13,7 @@ type Topic = {
   description: string
   kind: string
   wordCount: number
+  lexiconWordCount: number
   subtopicCount: number
 }
 type Subtopic = {
@@ -22,6 +23,10 @@ type Subtopic = {
   description: string
   wordCount: number
 }
+
+const titleKey = (value: string) =>
+  value.replace(/\s+/g, ' ').trim().toLocaleLowerCase('ru')
+const wordsLabel = (t: Topic) => `${t.lexiconWordCount + t.wordCount} слов`
 
 export default function TopicsManagePage({ students }: { students: User[] }) {
   const [topics, setTopics] = useState<Topic[]>([])
@@ -63,9 +68,14 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
   const sub = detail?.subtopics.find((s) => s.id === subId)
   const main = topics.filter((t) => t.kind === 'main')
   const lexical = topics.filter((t) => t.kind === 'lexical')
+  const topicExists =
+    !!title.trim() && topics.some((t) => titleKey(t.title) === titleKey(title))
+  const subExists =
+    !!subTitle.trim() &&
+    !!detail?.subtopics.some((s) => titleKey(s.title) === titleKey(subTitle))
 
   async function addTopic(kind: 'main' | 'lexical') {
-    if (!title.trim()) return
+    if (!title.trim() || topicExists) return
     try {
       const t = await api<Topic>('/vocab/topics', 'POST', {
         title: title.trim(),
@@ -73,20 +83,23 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
         description: '',
       })
       setTitle('')
+      setError('')
       await load()
       setSelectedId(t.id)
+      setSubId('')
     } catch (e) {
       setError((e as Error).message)
     }
   }
 
   async function addSub() {
-    if (!selectedId || !subTitle.trim()) return
+    if (!selectedId || !subTitle.trim() || subExists) return
     try {
       await api('/vocab/topics/' + selectedId + '/subtopics', 'POST', {
         title: subTitle.trim(),
       })
       setSubTitle('')
+      setError('')
       const d = await api<{ subtopics: Subtopic[] }>(
         '/vocab/topics/' + selectedId,
       )
@@ -106,8 +119,39 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
       )}
       <div className="lexicon-grid-3">
         <section className="glass-panel lexicon-panel">
+          <div className="lexicon-toolbar">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Новая тема"
+              aria-invalid={topicExists}
+            />
+          </div>
+          {topicExists && (
+            <p className="caption lexicon-duplicate" role="status">
+              Такая тема уже есть
+            </p>
+          )}
+          <div className="lexicon-toolbar">
+            <button
+              type="button"
+              className="button-primary button-small"
+              disabled={!title.trim() || topicExists}
+              onClick={() => addTopic('main')}
+            >
+              <Plus size={14} /> Тема
+            </button>
+            <button
+              type="button"
+              className="button-secondary button-small"
+              disabled={!title.trim() || topicExists}
+              onClick={() => addTopic('lexical')}
+            >
+              Группа
+            </button>
+          </div>
           <h2>Основные темы</h2>
-          <ul className="lexicon-list">
+          <ul className="lexicon-list lexicon-topic-list">
             {main.map((t) => (
               <li key={t.id}>
                 <button
@@ -121,7 +165,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
                   <span>
                     <strong>{t.title}</strong>
                     <small style={{ display: 'block' }}>
-                      {t.wordCount} слов
+                      {wordsLabel(t)}
                     </small>
                   </span>
                   <ChevronRight size={16} />
@@ -130,7 +174,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
             ))}
           </ul>
           <h2>Лексические группы</h2>
-          <ul className="lexicon-list">
+          <ul className="lexicon-list lexicon-topic-list">
             {lexical.map((t) => (
               <li key={t.id}>
                 <button
@@ -143,35 +187,15 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
                 >
                   <span>
                     <strong>{t.title}</strong>
+                    <small style={{ display: 'block' }}>
+                      {wordsLabel(t)}
+                    </small>
                   </span>
                   <ChevronRight size={16} />
                 </button>
               </li>
             ))}
           </ul>
-          <div className="lexicon-toolbar">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Новая тема"
-            />
-          </div>
-          <div className="lexicon-toolbar">
-            <button
-              type="button"
-              className="button-primary button-small"
-              onClick={() => addTopic('main')}
-            >
-              <Plus size={14} /> Тема
-            </button>
-            <button
-              type="button"
-              className="button-secondary button-small"
-              onClick={() => addTopic('lexical')}
-            >
-              Группа
-            </button>
-          </div>
         </section>
 
         <section className="glass-panel lexicon-panel">
@@ -180,7 +204,11 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
               <StubMedia label={topic.title} tall />
               <h2>{topic.title}</h2>
               <p className="caption">
-                {topic.wordCount} слов · {topic.subtopicCount} подтем
+                {wordsLabel(topic)}
+                {topic.lexiconWordCount > 0 &&
+                  topic.wordCount > 0 &&
+                  ` (из учебников: ${topic.lexiconWordCount})`}{' '}
+                · {detail?.subtopics.length ?? topic.subtopicCount} подтем
                 <span className="pill" style={{ marginLeft: 8 }}>
                   прогресс: заглушка
                 </span>
@@ -209,15 +237,22 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
                   value={subTitle}
                   onChange={(e) => setSubTitle(e.target.value)}
                   placeholder="Новая подтема"
+                  aria-invalid={subExists}
                 />
                 <button
                   type="button"
                   className="button-primary button-small"
+                  disabled={!subTitle.trim() || subExists}
                   onClick={addSub}
                 >
                   <Plus size={14} /> Добавить
                 </button>
               </div>
+              {subExists && (
+                <p className="caption lexicon-duplicate" role="status">
+                  Такая подтема в этой теме уже есть
+                </p>
+              )}
             </>
           ) : (
             <p className="empty-state">Выберите тему слева</p>

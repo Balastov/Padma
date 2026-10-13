@@ -30,6 +30,19 @@ const AUDIO_MIMES = new Set([
   'audio/mp4',
 ])
 
+const titleKey = (value) =>
+  value.replace(/\s+/g, ' ').trim().toLocaleLowerCase('ru')
+function duplicateTitle(rows, title) {
+  return rows.some((row) => titleKey(row.title) === titleKey(title))
+}
+const lexiconWordCount = (db, topicId) =>
+  db
+    .prepare(
+      `SELECT count(DISTINCT o.termId) AS n FROM lexicon_occurrences o
+       JOIN lexicon_units u ON u.id = o.unitId WHERE u.topicId=?`,
+    )
+    .get(topicId).n
+
 function addColumn(db, table, column, definition) {
   const cols = db
     .prepare(`PRAGMA table_info(${table})`)
@@ -637,6 +650,7 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
             `SELECT count(*) AS n FROM vocab_subtopics WHERE topicId=? AND archived=0`,
           )
           .get(t.id).n,
+        lexiconWordCount: lexiconWordCount(db, t.id),
         created: t.created,
         updated: t.updated,
       })),
@@ -652,6 +666,13 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
     const kind = clean(data.kind, 20) || 'main'
     if (!title) fail(400, 'Укажите название темы')
     if (!KINDS.has(kind)) fail(400, 'Некорректный тип темы')
+    if (
+      duplicateTitle(
+        db.prepare('SELECT title FROM vocab_topics WHERE archived=0').all(),
+        title,
+      )
+    )
+      fail(409, 'Такая тема уже есть')
     const now = new Date().toISOString()
     const id = randomUUID()
     db.prepare(
@@ -704,6 +725,7 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
         description: row.description,
         kind: row.kind,
         imageStub: true,
+        lexiconWordCount: lexiconWordCount(db, id),
         subtopics,
         created: row.created,
         updated: row.updated,
@@ -723,10 +745,23 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
         data.kind !== undefined ? clean(data.kind, 20) : row.kind
       if (!title) fail(400, 'Укажите название темы')
       if (!KINDS.has(kind)) fail(400, 'Некорректный тип темы')
+      if (
+        duplicateTitle(
+          db
+            .prepare('SELECT title FROM vocab_topics WHERE archived=0 AND id<>?')
+            .all(id),
+          title,
+        )
+      )
+        fail(409, 'Такая тема уже есть')
       const updated = new Date().toISOString()
       db.prepare(
         `UPDATE vocab_topics SET title=?, description=?, kind=?, updated=? WHERE id=?`,
       ).run(title, description, kind, updated, id)
+      db.prepare('UPDATE lexicon_units SET theme=? WHERE topicId=?').run(
+        title,
+        id,
+      )
       send(200, {
         id,
         title,
@@ -740,6 +775,10 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
     }
     if (req.method === 'DELETE') {
       if (!staff(user)) fail(403, 'Нет доступа')
+      if (
+        db.prepare('SELECT 1 FROM lexicon_units WHERE topicId=? LIMIT 1').get(id)
+      )
+        fail(409, 'Тема используется в словаре учебников, её нельзя удалить')
       db.prepare(
         `UPDATE vocab_topics SET archived=1, updated=? WHERE id=?`,
       ).run(new Date().toISOString(), id)
@@ -758,6 +797,17 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
     const title = clean(data.title, 120)
     const description = clean(data.description, 500)
     if (!title) fail(400, 'Укажите название подтемы')
+    if (
+      duplicateTitle(
+        db
+          .prepare(
+            'SELECT title FROM vocab_subtopics WHERE topicId=? AND archived=0',
+          )
+          .all(topicId),
+        title,
+      )
+    )
+      fail(409, 'Такая подтема в этой теме уже есть')
     const now = new Date().toISOString()
     const id = randomUUID()
     db.prepare(
@@ -792,6 +842,17 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
           ? clean(data.description, 500)
           : row.description
       if (!title) fail(400, 'Укажите название подтемы')
+      if (
+        duplicateTitle(
+          db
+            .prepare(
+              'SELECT title FROM vocab_subtopics WHERE topicId=? AND archived=0 AND id<>?',
+            )
+            .all(row.topicId, id),
+          title,
+        )
+      )
+        fail(409, 'Такая подтема в этой теме уже есть')
       const updated = new Date().toISOString()
       db.prepare(
         `UPDATE vocab_subtopics SET title=?, description=?, updated=? WHERE id=?`,

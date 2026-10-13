@@ -44,7 +44,7 @@ type EntriesPage = {
   items: LexiconEntry[]
 }
 type LexiconBook = { id: string; title: string; level: string }
-type LexiconTheme = { title: string }
+type LexiconTheme = { id: string; title: string }
 
 const PAGE_SIZES = [20, 50, 100]
 
@@ -167,7 +167,7 @@ export default function DictionaryAllPage() {
   const [q, setQ] = useState('')
   const [query, setQuery] = useState('')
   const [hiddenBooks, setHiddenBooks] = useState<string[]>([])
-  const [theme, setTheme] = useState('')
+  const [topicId, setTopicId] = useState('')
   const [limit, setLimit] = useState(PAGE_SIZES[0])
   const [offset, setOffset] = useState(0)
   const [focusId, setFocusId] = useState<number | null>(null)
@@ -212,7 +212,7 @@ export default function DictionaryAllPage() {
     if (hiddenBooks.length)
       for (const b of books)
         if (!hiddenBooks.includes(b.id)) params.append('bookId', b.id)
-    if (theme) params.set('theme', theme)
+    if (topicId) params.set('topicId', topicId)
     api<EntriesPage>(`/lexicon/entries?${params}`)
       .then((result) => {
         if (!active) return
@@ -228,7 +228,7 @@ export default function DictionaryAllPage() {
     return () => {
       active = false
     }
-  }, [query, books, hiddenBooks, noBooks, theme, limit, offset])
+  }, [query, books, hiddenBooks, noBooks, topicId, limit, offset])
 
   const items = (!noBooks && page?.items) || []
   const total = noBooks ? 0 : page?.total || 0
@@ -261,15 +261,15 @@ export default function DictionaryAllPage() {
         />
         <select
           aria-label="Тема"
-          value={theme}
+          value={topicId}
           onChange={(e) => {
-            setTheme(e.target.value)
+            setTopicId(e.target.value)
             setOffset(0)
           }}
         >
           <option value="">Тема</option>
           {themes.map((t) => (
-            <option key={t.title} value={t.title}>
+            <option key={t.id} value={t.id}>
               {t.title}
             </option>
           ))}

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { openStore } from '../server/store.mjs'
 import { readXlsx } from '../server/xlsx.mjs'
+import { initVocab } from '../server/vocab.mjs'
 import { initLexicon, importLexicon } from '../server/lexicon.mjs'
 
 // Usage: npm run import:lexicon -- /path/to/lexicon.xlsx [--replace]
@@ -13,6 +14,7 @@ if (!path) {
 const rows = readXlsx(readFileSync(path))
 const db = openStore(process.env.PADMA_DB || '.data/padma.sqlite')
 try {
+  initVocab(db)
   initLexicon(db)
   const stats = importLexicon(db, rows, { replace: args.includes('--replace') })
   console.log(

@@ -8,7 +8,7 @@ import { deflateRawSync } from 'node:zlib'
 import { createApp } from './index.mjs'
 import { hashPassword } from './store.mjs'
 import { readXlsx } from './xlsx.mjs'
-import { importLexicon } from './lexicon.mjs'
+import { importLexicon, initLexicon } from './lexicon.mjs'
 
 // Builds a tiny XLSX: shared strings for text, inline numbers for units.
 function buildXlsx(table) {
@@ -106,6 +106,9 @@ test('xlsx reader and lexicon import validation', () => {
   const dir = mkdtempSync(join(tmpdir(), 'padma-lexicon-unit-'))
   const { db } = createApp({ dbPath: join(dir, 'test.sqlite') })
   try {
+    db.prepare(
+      'INSERT INTO users (id,name,email,password,roles) VALUES (?,?,?,?,?)',
+    ).run('owner', 'owner', 'owner@example.test', 'x:00', '["owner"]')
     assert.throws(
       () => importLexicon(db, [{ number: 1, cells: ['Термин', 'Перевод'] }]),
       /Нет колонок: Учебник, Юнит, Тема/,
@@ -137,6 +140,42 @@ test('xlsx reader and lexicon import validation', () => {
     })
     assert.throws(() => importLexicon(db, rows), /--replace/)
     assert.equal(importLexicon(db, rows, { replace: true }).terms, 3)
+    // Themes become shared topics; re-import reuses them, matching titles
+    // case-insensitively.
+    const topics = db
+      .prepare('SELECT id, title, kind FROM vocab_topics ORDER BY title')
+      .all()
+    assert.deepEqual(
+      topics.map((t) => [t.title, t.kind]),
+      [
+        ['Город', 'main'],
+        ['Дом & еда', 'main'],
+        ['Покупки', 'main'],
+      ],
+    )
+    assert.equal(
+      db.prepare('SELECT count(*) AS n FROM lexicon_units WHERE topicId IS NULL').get().n,
+      0,
+    )
+    db.prepare("UPDATE vocab_topics SET title='ГОРОД' WHERE title='Город'").run()
+    importLexicon(db, rows, { replace: true })
+    assert.equal(db.prepare('SELECT count(*) AS n FROM vocab_topics').get().n, 3)
+    assert.equal(
+      db.prepare("SELECT theme FROM lexicon_units WHERE id='upper-intermediate-7'").get().theme,
+      'ГОРОД',
+    )
+
+    // Units imported before topics existed get linked on startup.
+    db.exec(`UPDATE lexicon_units SET topicId=NULL, theme='Новая тема' WHERE number=7;
+      DELETE FROM vocab_topics WHERE title='ГОРОД'`)
+    initLexicon(db)
+    const linked = db
+      .prepare(
+        `SELECT t.title FROM lexicon_units u JOIN vocab_topics t ON t.id=u.topicId
+         WHERE u.id='upper-intermediate-7'`,
+      )
+      .get()
+    assert.equal(linked.title, 'Новая тема')
   } finally {
     db.close()
     rmSync(dir, { recursive: true, force: true })
@@ -378,6 +417,103 @@ test('lexicon API: browse, search, term card, staff-only edits', async () => {
     assert.equal(found.body.total, 1)
     const after = await request(`/lexicon/terms/${termId}`, 'GET', undefined, student)
     assert.equal(after.body.occurrences[1].sentence, 'Put the apples in the basket.')
+
+    // Topics page: one shared entity with duplicate checks.
+    const topicList = await request('/vocab/topics', 'GET', undefined, teacher)
+    const home = topicList.body.find((t) => t.title === 'Дом & еда')
+    assert.equal(home.lexiconWordCount, 2)
+    assert.equal(
+      (await request('/vocab/topics', 'POST', { title: '  дом &   ЕДА ' }, teacher))
+        .status,
+      409,
+    )
+    const created = await request(
+      '/vocab/topics',
+      'POST',
+      { title: 'Погода', kind: 'main' },
+      teacher,
+    )
+    assert.equal(created.status, 201)
+    assert.equal(
+      (await request('/vocab/topics', 'POST', { title: 'ПОГОДА', kind: 'lexical' }, teacher))
+        .status,
+      409,
+    )
+    assert.equal(
+      (await request(`/vocab/topics/${created.body.id}`, 'PATCH', { title: 'Город' }, teacher))
+        .status,
+      409,
+    )
+    const themesNow = await request('/lexicon/themes', 'GET', undefined, student)
+    assert.deepEqual(
+      themesNow.body.find((t) => t.id === created.body.id),
+      { id: created.body.id, title: 'Погода', termCount: 0, units: [] },
+    )
+
+    const renamed = await request(
+      `/vocab/topics/${home.id}`,
+      'PATCH',
+      { title: 'Дом и еда' },
+      teacher,
+    )
+    assert.equal(renamed.status, 200)
+    const byRenamed = await request(
+      `/lexicon/entries?topicId=${home.id}`,
+      'GET',
+      undefined,
+      student,
+    )
+    assert.deepEqual(
+      [...new Set(byRenamed.body.items.map((e) => e.theme))],
+      ['Дом и еда'],
+    )
+    assert.equal(byRenamed.body.total, 2)
+    assert.equal(
+      (await request(`/vocab/topics/${home.id}`, 'DELETE', undefined, teacher))
+        .status,
+      409,
+    )
+    assert.equal(
+      (await request(`/vocab/topics/${created.body.id}`, 'DELETE', undefined, teacher))
+        .status,
+      200,
+    )
+
+    const sub = await request(
+      `/vocab/topics/${home.id}/subtopics`,
+      'POST',
+      { title: 'Кухня' },
+      teacher,
+    )
+    assert.equal(sub.status, 201)
+    assert.equal(
+      (await request(`/vocab/topics/${home.id}/subtopics`, 'POST', { title: 'КУХНЯ' }, teacher))
+        .status,
+      409,
+    )
+    const otherTopic = topicList.body.find((t) => t.title === 'Покупки')
+    assert.equal(
+      (await request(`/vocab/topics/${otherTopic.id}/subtopics`, 'POST', { title: 'Кухня' }, teacher))
+        .status,
+      201,
+    )
+    const second = await request(
+      `/vocab/topics/${home.id}/subtopics`,
+      'POST',
+      { title: 'Спальня' },
+      teacher,
+    )
+    assert.equal(
+      (await request(`/vocab/subtopics/${second.body.id}`, 'PATCH', { title: 'кухня' }, teacher))
+        .status,
+      409,
+    )
+    const detail = await request(`/vocab/topics/${home.id}`, 'GET', undefined, teacher)
+    assert.equal(detail.body.lexiconWordCount, 2)
+    assert.deepEqual(
+      detail.body.subtopics.map((s) => s.title),
+      ['Кухня', 'Спальня'],
+    )
   } finally {
     server.close()
     rmSync(dir, { recursive: true, force: true })

@@ -376,3 +376,12 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+.caption.lexicon-duplicate {
+  margin: 0;
+  color: #c2410c;
+}
+.lexicon-topic-list {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  padding: 2px;
+}
