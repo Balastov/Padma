@@ -15,7 +15,11 @@
   top: 24px;
   height: calc(100dvh - 48px);
   overflow: hidden;
-  background: linear-gradient(155deg, #ffffffb0, #f0faff90 60%, #e9e4ff99);
+}
+.workspace .sidebar {
+  background:
+    var(--glass-fill),
+    linear-gradient(155deg, #f0faff33, #e9e4ff40);
 }
 .sidebar > .logo {
   padding: 0 12px;
@@ -716,8 +720,10 @@ input[type='checkbox'] {
     height: auto;
     padding: 6px;
     z-index: 30;
-    border-radius: 20px;
-    background: #fafcffed;
+    border-radius: 24px;
+  }
+  .workspace .sidebar {
+    background: var(--glass-fill-strong);
   }
   .sidebar > .logo {
     display: none;

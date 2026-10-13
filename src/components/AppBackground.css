@@ -1,0 +1,24 @@
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.app-bg__image {
+  position: absolute;
+  /* Extra margin hides the soft transparent edge produced by the blur. */
+  inset: calc(var(--app-bg-blur) * -2.5 - 8px);
+  background: var(--app-bg-image) center / cover no-repeat;
+  filter: blur(var(--app-bg-blur)) saturate(1.25);
+  transform: translateZ(0);
+}
+.app-bg__tint {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    rgb(248 250 255 / var(--app-bg-tint)),
+    rgb(238 242 255 / var(--app-bg-tint))
+  );
+}

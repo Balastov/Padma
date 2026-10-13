@@ -5,6 +5,9 @@ import type { User } from './api'
 import LoginPage from './pages/LoginPage'
 import TeacherPage from './pages/TeacherPage'
 import NotificationPrompt from './components/NotificationPrompt'
+import AppBackground from './components/AppBackground'
+import { AppearanceContext } from './appearance'
+import type { Appearance, Background } from './appearance'
 import StudentLayout from './layouts/StudentLayout'
 import TodayPage from './pages/today/TodayPage'
 import PathPage from './pages/path/PathPage'
@@ -116,7 +119,29 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [appearance, setAppearance] = useState<Appearance | null>(null)
+  const [preview, setPreview] = useState<Background | null | undefined>()
   const navigate = useNavigate()
+  const userKey = user ? `${user.id}:${user.teacherId || ''}` : ''
+  const reloadAppearance = useCallback(async () => {
+    try {
+      setAppearance(
+        await api<Appearance>(userKey ? '/appearance' : '/appearance/public'),
+      )
+    } catch {
+      setAppearance(null)
+    }
+  }, [userKey])
+  useEffect(() => {
+    if (loading) return
+    let active = true
+    api<Appearance>(userKey ? '/appearance' : '/appearance/public')
+      .then((data) => active && setAppearance(data))
+      .catch(() => active && setAppearance(null))
+    return () => {
+      active = false
+    }
+  }, [loading, userKey])
   const load = useCallback(() => {
     api<User>('/me')
       .then(setUser)
@@ -163,7 +188,12 @@ export default function App() {
     )
   const home = user ? (isStaff(user) ? '/teacher' : '/today') : '/'
   return (
-    <>
+    <AppearanceContext.Provider
+      value={{ appearance, reload: reloadAppearance, setPreview }}
+    >
+      <AppBackground
+        background={preview === undefined ? appearance?.active || null : preview}
+      />
       {user && shouldShowNotifyPrompt(user) && (
         <NotificationPrompt user={user} onUserChange={setUser} />
       )}
@@ -211,6 +241,6 @@ export default function App() {
           }
         />
       </Routes>
-    </>
+    </AppearanceContext.Provider>
   )
 }

@@ -30,6 +30,7 @@ import Avatar from '../components/Avatar'
 import Calendar from '../components/Calendar'
 import Messages from '../components/Messages'
 import UsersPage from './UsersPage'
+import AppearanceSettings from '../components/AppearanceSettings'
 import EventPage from './EventPage'
 import LexiconLayout from './teacher/lexicon/LexiconLayout'
 import DictionaryAllPage from './teacher/lexicon/DictionaryAllPage'
@@ -306,13 +307,16 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
             <Route
               path="settings"
               element={
-                <UsersPage
-                  user={user}
-                  users={users}
-                  refresh={refresh}
-                  profile
-                  onUserChange={onUserChange}
-                />
+                <>
+                  <UsersPage
+                    user={user}
+                    users={users}
+                    refresh={refresh}
+                    profile
+                    onUserChange={onUserChange}
+                  />
+                  <AppearanceSettings />
+                </>
               }
             />
             <Route path="lexicon" element={<LexiconLayout />}>

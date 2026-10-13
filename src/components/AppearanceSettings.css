@@ -1,0 +1,99 @@
+.appearance {
+  display: grid;
+  gap: 16px;
+  max-width: 800px;
+  margin-top: 28px;
+}
+.appearance header h2 {
+  margin: 0 0 4px;
+}
+.appearance header p {
+  margin: 0;
+}
+.appearance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+.appearance-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  align-content: start;
+  min-width: 0;
+}
+.appearance-card h3 {
+  margin: 0 0 4px;
+}
+.appearance-card .caption {
+  margin: 0;
+}
+.appearance-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 15% 25%, #5ad2ff55, transparent 45%),
+    radial-gradient(circle at 85% 20%, #a06eff44, transparent 40%), #eef2ff;
+  border: 1px solid #ffffffb3;
+}
+.appearance-preview__image {
+  position: absolute;
+  inset: calc(var(--preview-blur) * -2.5 - 4px);
+  background: var(--preview-image) center / cover no-repeat;
+  filter: blur(var(--preview-blur)) saturate(1.25);
+}
+.appearance-preview__tint {
+  position: absolute;
+  inset: 0;
+  background: rgb(246 248 255 / var(--preview-tint));
+}
+.appearance-preview__glass {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.appearance-preview__glass strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+.appearance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.appearance-actions .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.appearance-range {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+.appearance-range span {
+  display: flex;
+  justify-content: space-between;
+}
+.appearance-range output {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.appearance-range input[type='range'] {
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--accent);
+}
