@@ -381,6 +381,85 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     return true
   }
 
+  // Flat occurrence rows (one per term in a unit), as in the source table.
+  if (path === '/api/lexicon/entries' && req.method === 'GET') {
+    const q = keyOf(params.get('q') || '')
+    const limit = Math.min(Math.max(Number(params.get('limit')) || 20, 1), 200)
+    const offset = Math.max(Number(params.get('offset')) || 0, 0)
+    const where = []
+    const args = []
+    if (q) {
+      where.push(
+        "(t.termKey LIKE ? ESCAPE '\\' OR t.translationKey LIKE ? ESCAPE '\\')",
+      )
+      args.push(likeOf(q), likeOf(q))
+    }
+    const bookIds = [
+      ...new Set(
+        params
+          .getAll('bookId')
+          .flatMap((value) => value.split(','))
+          .map((value) => clean(value, 120))
+          .filter(Boolean),
+      ),
+    ].slice(0, 50)
+    if (bookIds.length) {
+      where.push(`u.bookId IN (${bookIds.map(() => '?').join(',')})`)
+      args.push(...bookIds)
+    }
+    for (const [sql, value] of [
+      ['u.id = ?', clean(params.get('unitId'), 140)],
+      ['u.theme = ?', clean(params.get('theme'), 200)],
+    ])
+      if (value) {
+        where.push(sql)
+        args.push(value)
+      }
+    const from = `FROM lexicon_occurrences o
+      JOIN lexicon_terms t ON t.id = o.termId
+      JOIN lexicon_units u ON u.id = o.unitId
+      JOIN lexicon_books b ON b.id = u.bookId
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`
+    const total = db.prepare(`SELECT count(*) AS n ${from}`).get(...args).n
+    const rank = q
+      ? `CASE WHEN t.termKey = ? THEN 0 WHEN t.termKey LIKE ? ESCAPE '\\' THEN 1
+              WHEN t.translationKey = ? THEN 2 ELSE 3 END,`
+      : ''
+    const rankArgs = q ? [q, likeOf(q).slice(1), q] : []
+    const rows = db
+      .prepare(
+        `SELECT o.id, o.sentence, o.transcription AS ownTranscription,
+                t.id AS termId, t.term, t.translation, t.transcription,
+                u.id AS unitId, u.number AS unitNumber, u.theme,
+                b.id AS bookId, b.title AS bookTitle, b.level
+         ${from}
+         ORDER BY ${rank} ltrim(t.termKey, '(-./''" '), t.termKey,
+                  b.sortOrder, u.number, o.sortOrder
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...args, ...rankArgs, limit, offset)
+    send(200, {
+      total,
+      limit,
+      offset,
+      items: rows.map((r) => ({
+        id: r.id,
+        termId: r.termId,
+        term: r.term,
+        translation: r.translation,
+        transcription: r.ownTranscription || r.transcription,
+        sentence: r.sentence,
+        level: r.level,
+        bookId: r.bookId,
+        bookTitle: r.bookTitle,
+        unitId: r.unitId,
+        unitNumber: r.unitNumber,
+        theme: r.theme,
+      })),
+    })
+    return true
+  }
+
   if (path === '/api/lexicon/search' && req.method === 'GET') {
     const q = keyOf(params.get('q') || '')
     const bookId = clean(params.get('bookId'), 120)

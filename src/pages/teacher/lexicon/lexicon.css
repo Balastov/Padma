@@ -110,6 +110,95 @@
 .lexicon-table tr.is-selected {
   background: #536cff12;
 }
+.lexicon-table .pill {
+  white-space: nowrap;
+}
+.lexicon-pager {
+  justify-content: space-between;
+}
+.lexicon-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.lexicon-filters select {
+  flex: 0 1 260px;
+  width: auto;
+  min-width: 0;
+}
+.lexicon-dropdown {
+  position: relative;
+  flex: 0 1 260px;
+  min-width: 0;
+}
+.lexicon-dropdown__toggle {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #ffffff9e;
+  border: 1px solid #5b6eac29;
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-size: 16px;
+  text-align: left;
+}
+.lexicon-dropdown__toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lexicon-dropdown__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid #5b6eac29;
+  border-radius: 14px;
+  box-shadow: var(--shadow-floating);
+}
+.lexicon-dropdown__menu input {
+  min-height: 0;
+  flex: none;
+}
+.lexicon-dropdown__menu label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.lexicon-dropdown__menu label:hover {
+  background: #536cff0d;
+}
+.lexicon-dropdown__menu .pill {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.lexicon-book {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.lexicon-grid-2.lexicon-dictionary {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+.lexicon-page-size select {
+  min-height: 36px;
+}
 .lexicon-table button.linkish {
   background: none;
   border: 0;
@@ -258,7 +347,8 @@
   .lexicon-grid-3 {
     grid-template-columns: 1fr;
   }
-  .lexicon-grid-2 {
+  .lexicon-grid-2,
+  .lexicon-grid-2.lexicon-dictionary {
     grid-template-columns: 1fr;
   }
   .lexicon-stats {
@@ -268,6 +358,10 @@
 @media (max-width: 700px) {
   .lexicon-form {
     grid-template-columns: 1fr;
+  }
+  .lexicon-filters select,
+  .lexicon-dropdown {
+    flex-basis: 100%;
   }
   .lexicon-tabs {
     width: 100%;

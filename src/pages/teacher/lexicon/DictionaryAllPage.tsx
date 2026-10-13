@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
-import { Plus, Volume2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink } from 'react-router-dom'
+import { ChevronDown, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react'
 import { api } from '../../../api'
-import type { User } from '../../../api'
 import StubMedia from '../../../components/StubMedia'
-import AssignPanel from './AssignPanel'
 import { playWordAudio } from '../../../student/audio'
 import './lexicon.css'
 
@@ -25,7 +23,30 @@ export type TeacherWord = {
   collectionIds?: string[]
 }
 
-type Topic = { id: string; title: string }
+type LexiconEntry = {
+  id: number
+  termId: string
+  term: string
+  translation: string
+  transcription: string
+  sentence: string
+  level: string
+  bookId: string
+  bookTitle: string
+  unitId: string
+  unitNumber: number
+  theme: string
+}
+type EntriesPage = {
+  total: number
+  limit: number
+  offset: number
+  items: LexiconEntry[]
+}
+type LexiconBook = { id: string; title: string; level: string }
+type LexiconTheme = { title: string }
+
+const PAGE_SIZES = [20, 50, 100]
 
 export function DictionaryChrome({
   lead,
@@ -51,152 +72,276 @@ export function DictionaryChrome({
   )
 }
 
-export default function DictionaryAllPage({ students }: { students: User[] }) {
-  const [words, setWords] = useState<TeacherWord[]>([])
-  const [topics, setTopics] = useState<Topic[]>([])
-  const [q, setQ] = useState('')
-  const [level, setLevel] = useState('')
-  const [topicId, setTopicId] = useState('')
-  const [selected, setSelected] = useState<string[]>([])
-  const [focusId, setFocusId] = useState('')
-  const [error, setError] = useState('')
-
-  const load = useCallback(async () => {
-    try {
-      const [w, t] = await Promise.all([
-        api<TeacherWord[]>('/vocab'),
-        api<Topic[]>('/vocab/topics'),
-      ])
-      setWords(w)
-      setTopics(t)
-      setError('')
-      if (!focusId && w[0]) setFocusId(w[0].id)
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }, [focusId])
+function BookFilter({
+  books,
+  hidden,
+  onChange,
+}: {
+  books: LexiconBook[]
+  hidden: string[]
+  onChange: (hidden: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase()
-    return words.filter((w) => {
-      if (level && w.level !== level) return false
-      if (topicId && w.topicId !== topicId) return false
-      if (!s) return true
-      return (
-        w.word.toLowerCase().includes(s) ||
-        w.translation.toLowerCase().includes(s) ||
-        w.transcription.toLowerCase().includes(s)
-      )
+  const selected = books.filter((b) => !hidden.includes(b.id))
+  const label = !hidden.length
+    ? 'Уровень: все'
+    : !selected.length
+      ? 'Уровень: не выбран'
+      : selected.length === 1
+        ? selected[0].title
+        : `Уровень: ${selected.length} из ${books.length}`
+
+  return (
+    <div className="lexicon-dropdown" ref={ref}>
+      <button
+        type="button"
+        className="lexicon-dropdown__toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span>{label}</span>
+        <ChevronDown size={16} />
+      </button>
+      {open && (
+        <div className="lexicon-dropdown__menu">
+          <label>
+            <input
+              type="checkbox"
+              checked={!hidden.length}
+              ref={(el) => {
+                if (el)
+                  el.indeterminate =
+                    hidden.length > 0 && hidden.length < books.length
+              }}
+              onChange={() =>
+                onChange(hidden.length ? [] : books.map((b) => b.id))
+              }
+            />
+            (Выделить все)
+          </label>
+          {books.map((b) => (
+            <label key={b.id}>
+              <input
+                type="checkbox"
+                checked={!hidden.includes(b.id)}
+                onChange={() =>
+                  onChange(
+                    hidden.includes(b.id)
+                      ? hidden.filter((id) => id !== b.id)
+                      : [...hidden, b.id],
+                  )
+                }
+              />
+              <span>{b.title}</span>
+              {b.level && <span className="pill">{b.level}</span>}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function DictionaryAllPage() {
+  const [page, setPage] = useState<EntriesPage | null>(null)
+  const [books, setBooks] = useState<LexiconBook[]>([])
+  const [themes, setThemes] = useState<LexiconTheme[]>([])
+  const [q, setQ] = useState('')
+  const [query, setQuery] = useState('')
+  const [hiddenBooks, setHiddenBooks] = useState<string[]>([])
+  const [theme, setTheme] = useState('')
+  const [limit, setLimit] = useState(PAGE_SIZES[0])
+  const [offset, setOffset] = useState(0)
+  const [focusId, setFocusId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      api<LexiconBook[]>('/lexicon/books'),
+      api<LexiconTheme[]>('/lexicon/themes'),
+    ])
+      .then(([b, t]) => {
+        if (!active) return
+        setBooks(b)
+        setThemes(t)
+      })
+      .catch((e: Error) => active && setError(e.message))
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setQuery(q.trim())
+      setOffset(0)
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [q])
+
+  const noBooks = books.length > 0 && hiddenBooks.length >= books.length
+
+  useEffect(() => {
+    if (noBooks) return
+    let active = true
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
     })
-  }, [words, q, level, topicId])
+    if (query) params.set('q', query)
+    if (hiddenBooks.length)
+      for (const b of books)
+        if (!hiddenBooks.includes(b.id)) params.append('bookId', b.id)
+    if (theme) params.set('theme', theme)
+    api<EntriesPage>(`/lexicon/entries?${params}`)
+      .then((result) => {
+        if (!active) return
+        setPage(result)
+        setError('')
+        setLoading(false)
+      })
+      .catch((e: Error) => {
+        if (!active) return
+        setError(e.message)
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [query, books, hiddenBooks, noBooks, theme, limit, offset])
 
-  const current = words.find((w) => w.id === focusId) || filtered[0]
-
-  function toggle(id: string) {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }
+  const items = (!noBooks && page?.items) || []
+  const total = noBooks ? 0 : page?.total || 0
+  const current = items.find((e) => e.id === focusId) || items[0]
 
   return (
     <div className="lexicon">
-      <DictionaryChrome lead="Создавайте словарь, с которым ученикам легко работать" />
+      <DictionaryChrome lead="Слова из учебников: перевод, транскрипция, уровень, тема и юнит" />
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      <div className="lexicon-toolbar">
+      <div className="lexicon-toolbar lexicon-filters">
         <label className="field">
           <span className="sr-only">Поиск</span>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Поиск слова, перевода или темы…"
+            placeholder="Поиск слова или перевода…"
           />
         </label>
-        <select value={level} onChange={(e) => setLevel(e.target.value)}>
-          <option value="">Уровень</option>
-          {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
+        <BookFilter
+          books={books}
+          hidden={hiddenBooks}
+          onChange={(next) => {
+            setHiddenBooks(next)
+            setOffset(0)
+          }}
+        />
+        <select
+          aria-label="Тема"
+          value={theme}
+          onChange={(e) => {
+            setTheme(e.target.value)
+            setOffset(0)
+          }}
+        >
           <option value="">Тема</option>
-          {topics.map((t) => (
-            <option key={t.id} value={t.id}>
+          {themes.map((t) => (
+            <option key={t.title} value={t.title}>
               {t.title}
             </option>
           ))}
         </select>
-        <Link
-          className="button-primary button-small"
-          to="/teacher/lexicon/dictionary/words/new"
-        >
-          <Plus size={16} /> Добавить слово
-        </Link>
       </div>
-      <div className="lexicon-grid-2">
+      <div className="lexicon-grid-2 lexicon-dictionary">
         <section className="glass-panel lexicon-panel">
-          <div className="lexicon-toolbar">
+          <div className="lexicon-toolbar lexicon-pager">
             <span className="caption">
-              Выбрано: {selected.length} · Всего: {filtered.length}
+              {total
+                ? `${offset + 1}–${Math.min(offset + limit, total)} из ${total.toLocaleString('ru-RU')}`
+                : 'Всего: 0'}
             </span>
-            {selected.length > 0 && (
-              <span className="caption">
-                Назначьте выбранные справа →
-              </span>
-            )}
+            <label className="lexicon-page-size">
+              <span className="caption">Показывать по</span>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value))
+                  setOffset(0)
+                }}
+              >
+                {PAGE_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="lexicon-table-wrap">
             <table className="lexicon-table">
               <thead>
                 <tr>
-                  <th></th>
                   <th>Слово</th>
                   <th>Перевод</th>
-                  <th>IPA</th>
+                  <th>Транскрипция</th>
                   <th>Ур.</th>
+                  <th>Тема</th>
+                  <th>Юнит</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((w) => (
+                {items.map((e) => (
                   <tr
-                    key={w.id}
-                    className={w.id === current?.id ? 'is-selected' : ''}
+                    key={e.id}
+                    className={e.id === current?.id ? 'is-selected' : ''}
                   >
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(w.id)}
-                        onChange={() => toggle(w.id)}
-                      />
-                    </td>
                     <td>
                       <button
                         type="button"
                         className="linkish"
-                        onClick={() => setFocusId(w.id)}
+                        onClick={() => setFocusId(e.id)}
                       >
-                        {w.word}
+                        {e.term}
                       </button>
                     </td>
-                    <td>{w.translation}</td>
-                    <td className="ipa">{w.transcription}</td>
-                    <td>{w.level && <span className="pill">{w.level}</span>}</td>
+                    <td>{e.translation}</td>
+                    <td className="ipa">{e.transcription}</td>
+                    <td>
+                      <span className="lexicon-book">{e.bookTitle}</span>
+                      {e.level && <span className="pill">{e.level}</span>}
+                    </td>
+                    <td>{e.theme}</td>
+                    <td title={e.bookTitle}>{e.unitNumber}</td>
                     <td>
                       <button
                         type="button"
                         className="icon-button"
-                        aria-label="Аудио"
-                        onClick={() => void playWordAudio(w.word, w.id)}
+                        aria-label={`Произношение: ${e.term}`}
+                        onClick={() => void playWordAudio(e.term)}
                       >
                         <Volume2 size={16} />
                       </button>
@@ -205,46 +350,62 @@ export default function DictionaryAllPage({ students }: { students: User[] }) {
                 ))}
               </tbody>
             </table>
-            {!filtered.length && (
-              <p className="empty-state">Слов пока нет — добавьте первое.</p>
+            {!loading && !items.length && (
+              <p className="empty-state">
+                {noBooks ? 'Выберите хотя бы один уровень.' : 'Ничего не найдено.'}
+              </p>
             )}
           </div>
-        </section>
-        <div style={{ display: 'grid', gap: 16 }}>
-          {current && (
-            <section className="glass-panel lexicon-panel lexicon-preview">
-              <StubMedia label={current.word} />
-              <div className="lexicon-preview__word">{current.word}</div>
-              <p className="ipa">{current.transcription}</p>
-              <p>{current.translation}</p>
-              <div className="lexicon-toolbar">
-                {current.level && <span className="pill">{current.level}</span>}
-                {current.pos && <span className="pill">{current.pos}</span>}
-              </div>
-              {current.exampleEn && (
-                <div>
-                  <small>Пример</small>
-                  <p>{current.exampleEn}</p>
-                  <p className="secondary">{current.exampleRu}</p>
-                </div>
-              )}
-              <Link
-                className="button-secondary"
-                to={`/teacher/lexicon/dictionary/words/${current.id}`}
+          {total > limit && (
+            <div className="lexicon-toolbar lexicon-pager">
+              <button
+                type="button"
+                className="button-secondary button-small"
+                disabled={offset === 0}
+                onClick={() => setOffset(Math.max(offset - limit, 0))}
               >
-                Редактировать
-              </Link>
-            </section>
+                <ChevronLeft size={16} /> Назад
+              </button>
+              <span className="caption">
+                Стр. {Math.floor(offset / limit) + 1} из{' '}
+                {Math.ceil(total / limit)}
+              </span>
+              <button
+                type="button"
+                className="button-secondary button-small"
+                disabled={offset + limit >= total}
+                onClick={() => setOffset(offset + limit)}
+              >
+                Вперёд <ChevronRight size={16} />
+              </button>
+            </div>
           )}
-          {selected.length > 0 && (
-            <AssignPanel
-              sourceType="words"
-              sourceId=""
-              wordIds={selected}
-              students={students}
-            />
-          )}
-        </div>
+        </section>
+        {current && (
+          <section className="glass-panel lexicon-panel lexicon-preview">
+            <StubMedia label={current.term} />
+            <div className="lexicon-preview__word">{current.term}</div>
+            {current.transcription && (
+              <p className="ipa">{current.transcription}</p>
+            )}
+            <p>{current.translation}</p>
+            <div className="lexicon-toolbar">
+              {current.level && <span className="pill">{current.level}</span>}
+              <span className="pill">Юнит {current.unitNumber}</span>
+            </div>
+            <div>
+              <small>Тема</small>
+              <p>{current.theme}</p>
+              <p className="secondary">{current.bookTitle}</p>
+            </div>
+            {current.sentence && (
+              <div>
+                <small>Пример</small>
+                <p>{current.sentence}</p>
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   )

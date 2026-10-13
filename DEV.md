@@ -127,6 +127,7 @@ API (чтение — любой вошедший пользователь, пр
 - `GET /api/lexicon/books` — учебники с юнитами, темами и числом слов.
 - `GET /api/lexicon/themes` — темы и их юниты.
 - `GET /api/lexicon/units/:id` — слова юнита (`id` вида `elementary-25`).
+- `GET /api/lexicon/entries?q=&bookId=&unitId=&theme=&limit=&offset=` — постраничные строки «термин в юните», как в исходной таблице (по умолчанию 20, до 200; `bookId` можно повторять для нескольких учебников); используется страницей «Лексика → Словарь → Все слова».
 - `GET /api/lexicon/search?q=&bookId=&unitId=&theme=&limit=&offset=` — поиск по термину и переводу (подстрока, без учёта регистра), фильтры, `limit` до 200.
 - `GET|PATCH /api/lexicon/terms/:id` — карточка термина со всеми вхождениями; правка `term`, `translation`, `transcription`.
 - `PATCH /api/lexicon/occurrences/:id` — правка `sentence`, `transcription` вхождения.

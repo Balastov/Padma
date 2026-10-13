@@ -320,18 +320,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                 index
                 element={<Navigate to="dictionary" replace />}
               />
-              <Route
-                path="dictionary"
-                element={
-                  <DictionaryAllPage
-                    students={
-                      isManager(user)
-                        ? students
-                        : students.filter((s) => s.teacherId === user.id)
-                    }
-                  />
-                }
-              />
+              <Route path="dictionary" element={<DictionaryAllPage />} />
               <Route
                 path="dictionary/topics"
                 element={

@@ -266,6 +266,53 @@ test('lexicon API: browse, search, term card, staff-only edits', async () => {
       0,
     )
 
+    const entries = await request(
+      '/lexicon/entries?q=bask',
+      'GET',
+      undefined,
+      student,
+    )
+    assert.equal(entries.body.total, 2)
+    assert.deepEqual(
+      entries.body.items.map((e) => [
+        e.term,
+        e.level,
+        e.unitNumber,
+        e.theme,
+        e.transcription,
+      ]),
+      [
+        ['basket', 'A1-A2', 3, 'Дом & еда', 'ˈbæskət'],
+        ['basket', 'B2', 3, 'Покупки', 'ˈbɑːskɪt'],
+      ],
+    )
+    const entryPage = await request(
+      `/lexicon/entries?theme=${encodeURIComponent('Дом & еда')}&limit=1&offset=1`,
+      'GET',
+      undefined,
+      student,
+    )
+    assert.equal(entryPage.body.total, 2)
+    assert.deepEqual(entryPage.body.items.map((e) => e.term), ['basket'])
+    const entriesByBook = await request(
+      `/lexicon/entries?bookId=elementary&q=${encodeURIComponent('приезж')}`,
+      'GET',
+      undefined,
+      student,
+    )
+    assert.deepEqual(entriesByBook.body.items.map((e) => e.term), ['arrive'])
+    const severalBooks = await request(
+      '/lexicon/entries?bookId=elementary&bookId=upper-intermediate&q=bask',
+      'GET',
+      undefined,
+      student,
+    )
+    assert.equal(severalBooks.body.total, 2)
+    assert.deepEqual(
+      severalBooks.body.items.map((e) => e.bookTitle),
+      ['Elementary', 'Upper-Intermediate'],
+    )
+
     const termId = byWord.body.items[0].id
     const card = await request(`/lexicon/terms/${termId}`, 'GET', undefined, student)
     assert.equal(card.body.occurrences.length, 2)
