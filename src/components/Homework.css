@@ -238,3 +238,53 @@
 .hw__translation {
   color: var(--text-soft);
 }
+.hw__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin: 8px 0 4px;
+}
+.hw__filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.hw__filters select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+}
+.hw__filters .hw__filter-check {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.hw__filter-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.hw__filter-count {
+  align-self: center;
+  margin-left: auto;
+}
+.hw__badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.subtle-badge.hw__overdue {
+  color: #b42318;
+  background: #fde8e7cc;
+  border-color: #f6b9b4;
+}

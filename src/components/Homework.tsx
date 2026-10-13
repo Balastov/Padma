@@ -41,10 +41,23 @@ type Assignment = {
   }
 }
 const statuses = {
+  todo: 'К выполнению',
   submitted: 'На проверке',
   returned: 'Нужна доработка',
   accepted: 'Принято',
 }
+type Status = keyof typeof statuses
+const statusOf = (item: Assignment): Status =>
+  item.submissions.at(-1)?.status || 'todo'
+const moscowToday = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(
+    new Date(),
+  )
+/** Deadline passed and the work is still on the student's side. */
+const isOverdue = (item: Assignment, today: string) =>
+  !!item.due &&
+  item.due < today &&
+  (statusOf(item) === 'todo' || statusOf(item) === 'returned')
 const stamp = (value: string) =>
   new Date(value).toLocaleString('ru-RU', {
     timeZone: 'Europe/Moscow',
@@ -59,6 +72,17 @@ export default function Homework({ students }: { students?: User[] }) {
   const [busy, setBusy] = useState(false)
   const [lexicon, setLexicon] = useState<LexiconSource[]>([])
   const [notice, setNotice] = useState('')
+  const [studentFilter, setStudentFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<Status | ''>('')
+  const [overdueOnly, setOverdueOnly] = useState(false)
+  const today = moscowToday()
+  const filtering = !!(studentFilter || statusFilter || overdueOnly)
+  const visible = items.filter(
+    (item) =>
+      (!studentFilter || item.studentId === studentFilter) &&
+      (!statusFilter || statusOf(item) === statusFilter) &&
+      (!overdueOnly || isOverdue(item, today)),
+  )
   const refresh = useCallback(async () => {
     try {
       setItems(await api<Assignment[]>('/homework'))
@@ -190,10 +214,72 @@ export default function Homework({ students }: { students?: User[] }) {
             : 'Учитель ещё не выдал домашнее задание.'}
         </p>
       )}
-      {items.map((item) => (
+      {students && !!items.length && (
+        <div className="hw__filters" role="group" aria-label="Фильтры заданий">
+          <label>
+            Ученик
+            <select
+              value={studentFilter}
+              onChange={(e) => setStudentFilter(e.target.value)}
+            >
+              <option value="">Все ученики</option>
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {fullName(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Статус
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as Status | '')}
+            >
+              <option value="">Все статусы</option>
+              {(Object.keys(statuses) as Status[]).map((key) => (
+                <option key={key} value={key}>
+                  {statuses[key]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="hw__filter-check">
+            <input
+              type="checkbox"
+              checked={overdueOnly}
+              onChange={(e) => setOverdueOnly(e.target.checked)}
+            />
+            Просроченные
+          </label>
+          <span className="caption hw__filter-count">
+            {filtering
+              ? `Показано ${visible.length} из ${items.length}`
+              : `Всего: ${items.length}`}
+          </span>
+          {filtering && (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setStudentFilter('')
+                setStatusFilter('')
+                setOverdueOnly(false)
+              }}
+            >
+              Сбросить
+            </button>
+          )}
+        </div>
+      )}
+      {filtering && !visible.length && (
+        <p className="secondary">Нет заданий по выбранным фильтрам.</p>
+      )}
+      {visible.map((item) => (
         <AssignmentCard
           key={item.id}
           item={item}
+          overdue={isOverdue(item, today)}
           teacher={!!students}
           studentName={
             students
@@ -208,11 +294,13 @@ export default function Homework({ students }: { students?: User[] }) {
 }
 function AssignmentCard({
   item,
+  overdue,
   teacher,
   studentName,
   onSaved,
 }: {
   item: Assignment
+  overdue: boolean
   teacher: boolean
   studentName?: string
   onSaved: () => Promise<void>
@@ -283,8 +371,11 @@ function AssignmentCard({
     <article className="hw__card">
       <div className="hw__head">
         <h3>{item.title}</h3>
-        <span className="subtle-badge">
-          {last ? statuses[last.status] : 'К выполнению'}
+        <span className="hw__badges">
+          {overdue && (
+            <span className="subtle-badge hw__overdue">Просрочено</span>
+          )}
+          <span className="subtle-badge">{statuses[statusOf(item)]}</span>
         </span>
       </div>
       {studentName && <p className="secondary">{studentName}</p>}
