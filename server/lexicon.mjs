@@ -124,6 +124,15 @@ export function initLexicon(db) {
     CREATE INDEX IF NOT EXISTS lexicon_units_book ON lexicon_units(bookId);
     CREATE INDEX IF NOT EXISTS lexicon_occurrences_term ON lexicon_occurrences(termId);
     CREATE INDEX IF NOT EXISTS lexicon_occurrences_unit ON lexicon_occurrences(unitId);
+    -- termId has no foreign key on purpose: term ids are stable hashes, so
+    -- teacher-curated subtopic words survive a full re-import.
+    CREATE TABLE IF NOT EXISTS lexicon_subtopic_terms (
+      subtopicId TEXT NOT NULL REFERENCES vocab_subtopics(id) ON DELETE CASCADE,
+      termId TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL DEFAULT 0,
+      added TEXT NOT NULL,
+      PRIMARY KEY (subtopicId, termId)
+    );
   `)
   const columns = db.prepare('PRAGMA table_info(lexicon_units)').all()
   if (!columns.some((c) => c.name === 'topicId'))
@@ -318,6 +327,35 @@ export function importLexicon(db, rows, { replace = false } = {}) {
   }
 }
 
+const TERM_ORDER = `ltrim(t.termKey, '(-./''" '), t.termKey`
+
+// Words of a topic: textbook units of the topic plus words of its subtopics.
+export function topicTerms(db, topicId) {
+  return db
+    .prepare(
+      `SELECT t.id, t.term, t.translation, t.transcription FROM lexicon_terms t
+       WHERE t.id IN (
+         SELECT o.termId FROM lexicon_occurrences o
+         JOIN lexicon_units u ON u.id = o.unitId WHERE u.topicId = ?
+         UNION
+         SELECT st.termId FROM lexicon_subtopic_terms st
+         JOIN vocab_subtopics s ON s.id = st.subtopicId
+         WHERE s.topicId = ? AND s.archived = 0)
+       ORDER BY ${TERM_ORDER}`,
+    )
+    .all(topicId, topicId)
+}
+
+export function subtopicTerms(db, subtopicId) {
+  return db
+    .prepare(
+      `SELECT t.id, t.term, t.translation, t.transcription
+       FROM lexicon_subtopic_terms st JOIN lexicon_terms t ON t.id = st.termId
+       WHERE st.subtopicId = ? ORDER BY st.sortOrder, ${TERM_ORDER}`,
+    )
+    .all(subtopicId)
+}
+
 const publicTerm = (row) => ({
   id: row.id,
   term: row.term,
@@ -360,6 +398,93 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
   if (path !== '/api/lexicon' && !path.startsWith('/api/lexicon/'))
     return false
   const params = new URL(req.url, 'http://localhost').searchParams
+
+  const topicTermsMatch = /^\/api\/lexicon\/topics\/([^/]+)\/terms$/.exec(path)
+  if (topicTermsMatch && req.method === 'GET') {
+    if (!staff(user)) fail(403, 'Нет доступа')
+    const topic = db
+      .prepare('SELECT id, title FROM vocab_topics WHERE id = ? AND archived = 0')
+      .get(decodeURIComponent(topicTermsMatch[1]))
+    if (!topic) fail(404, 'Тема не найдена')
+    const subtopics = db
+      .prepare(
+        `SELECT s.id, s.title, count(st.termId) AS termCount FROM vocab_subtopics s
+         LEFT JOIN lexicon_subtopic_terms st ON st.subtopicId = s.id
+         WHERE s.topicId = ? AND s.archived = 0
+         GROUP BY s.id ORDER BY s.title COLLATE NOCASE`,
+      )
+      .all(topic.id)
+    send(200, { ...topic, subtopics, terms: topicTerms(db, topic.id) })
+    return true
+  }
+
+  const subTerms = /^\/api\/lexicon\/subtopics\/([^/]+)\/terms(?:\/([^/]+))?$/.exec(
+    path,
+  )
+  if (subTerms) {
+    if (!staff(user)) fail(403, 'Нет доступа')
+    const sub = db
+      .prepare(
+        `SELECT s.id, s.title, s.topicId, t.title AS topicTitle FROM vocab_subtopics s
+         JOIN vocab_topics t ON t.id = s.topicId
+         WHERE s.id = ? AND s.archived = 0 AND t.archived = 0`,
+      )
+      .get(decodeURIComponent(subTerms[1]))
+    if (!sub) fail(404, 'Подтема не найдена')
+    const termId = subTerms[2] && decodeURIComponent(subTerms[2])
+    if (!termId && req.method === 'POST') {
+      const data = await body(req, 100000)
+      const ids = Array.isArray(data.termIds)
+        ? [...new Set(data.termIds.filter((id) => typeof id === 'string'))]
+        : []
+      if (!ids.length || ids.length > 500)
+        fail(400, 'Отметьте от 1 до 500 слов')
+      const known = new Set(
+        db
+          .prepare(
+            `SELECT id FROM lexicon_terms WHERE id IN (${ids.map(() => '?').join(',')})`,
+          )
+          .all(...ids)
+          .map((r) => r.id),
+      )
+      if (known.size !== ids.length) fail(400, 'Некоторые слова не найдены')
+      const next =
+        db
+          .prepare(
+            'SELECT coalesce(max(sortOrder), -1) + 1 AS n FROM lexicon_subtopic_terms WHERE subtopicId = ?',
+          )
+          .get(sub.id).n
+      const insert = db.prepare(
+        `INSERT OR IGNORE INTO lexicon_subtopic_terms (subtopicId, termId, sortOrder, added)
+         VALUES (?,?,?,?)`,
+      )
+      const now = new Date().toISOString()
+      let added = 0
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        ids.forEach((id, index) => {
+          added += Number(insert.run(sub.id, id, next + index, now).changes)
+        })
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+      send(200, { ...sub, added, terms: subtopicTerms(db, sub.id) })
+      return true
+    }
+    if (termId && req.method === 'DELETE') {
+      db.prepare(
+        'DELETE FROM lexicon_subtopic_terms WHERE subtopicId = ? AND termId = ?',
+      ).run(sub.id, termId)
+      send(200, { ...sub, terms: subtopicTerms(db, sub.id) })
+      return true
+    }
+    if (!termId && req.method === 'GET') {
+      send(200, { ...sub, terms: subtopicTerms(db, sub.id) })
+      return true
+    }
+  }
 
   if (path === '/api/lexicon/books' && req.method === 'GET') {
     const units = db

@@ -1,0 +1,82 @@
+.lex-checklist {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.lex-checklist__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lex-checklist__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #5b6eac1f;
+  border-radius: 12px;
+  background: #ffffff8c;
+}
+.lex-checklist label,
+.hw__form .lex-checklist label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.lex-checklist label:hover {
+  background: #536cff0d;
+}
+.lex-checklist input[type='checkbox'],
+.hw__form .lex-checklist input[type='checkbox'] {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  align-self: center;
+}
+.lex-checklist__term {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.lex-checklist__ipa {
+  color: #0f8f7a;
+  font-size: 0.85rem;
+}
+.lex-checklist__translation {
+  color: var(--text-secondary);
+}
+.lex-search {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.lex-search > button {
+  justify-self: start;
+}
+.lex-search__field,
+.hw__form .lex-search__field {
+  position: relative;
+  display: block;
+}
+.lex-search__field svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.lex-search .lex-search__field input:not([type='checkbox']) {
+  padding-left: 38px;
+}

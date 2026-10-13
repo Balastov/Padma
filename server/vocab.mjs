@@ -38,10 +38,15 @@ function duplicateTitle(rows, title) {
 const lexiconWordCount = (db, topicId) =>
   db
     .prepare(
-      `SELECT count(DISTINCT o.termId) AS n FROM lexicon_occurrences o
-       JOIN lexicon_units u ON u.id = o.unitId WHERE u.topicId=?`,
+      `SELECT count(*) AS n FROM (
+         SELECT o.termId FROM lexicon_occurrences o
+         JOIN lexicon_units u ON u.id = o.unitId WHERE u.topicId=?
+         UNION
+         SELECT st.termId FROM lexicon_subtopic_terms st
+         JOIN vocab_subtopics s ON s.id = st.subtopicId
+         WHERE s.topicId=? AND s.archived=0)`,
     )
-    .get(topicId).n
+    .get(topicId, topicId).n
 
 function addColumn(db, table, column, definition) {
   const cols = db
@@ -714,6 +719,11 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
           wordCount: db
             .prepare(
               `SELECT count(*) AS n FROM vocab_words WHERE subtopicId=? AND archived=0`,
+            )
+            .get(s.id).n,
+          lexiconWordCount: db
+            .prepare(
+              'SELECT count(*) AS n FROM lexicon_subtopic_terms WHERE subtopicId=?',
             )
             .get(s.id).n,
           created: s.created,

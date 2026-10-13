@@ -4,6 +4,8 @@ import { api } from '../../../api'
 import type { User } from '../../../api'
 import StubMedia from '../../../components/StubMedia'
 import AssignPanel from './AssignPanel'
+import SubtopicWords from './SubtopicWords'
+import { wordsCount } from '../../../components/lexiconFormat'
 import { DictionaryChrome } from './DictionaryAllPage'
 import './lexicon.css'
 
@@ -22,11 +24,12 @@ type Subtopic = {
   title: string
   description: string
   wordCount: number
+  lexiconWordCount: number
 }
 
 const titleKey = (value: string) =>
   value.replace(/\s+/g, ' ').trim().toLocaleLowerCase('ru')
-const wordsLabel = (t: Topic) => `${t.lexiconWordCount + t.wordCount} слов`
+const wordsLabel = (t: Topic) => wordsCount(t.lexiconWordCount + t.wordCount)
 
 export default function TopicsManagePage({ students }: { students: User[] }) {
   const [topics, setTopics] = useState<Topic[]>([])
@@ -38,6 +41,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
   const [title, setTitle] = useState('')
   const [subTitle, setSubTitle] = useState('')
   const [error, setError] = useState('')
+  const [version, setVersion] = useState(0)
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +66,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
         if (!subId && d.subtopics[0]) setSubId(d.subtopics[0].id)
       })
       .catch((e) => setError(e.message))
-  }, [selectedId, subId])
+  }, [selectedId, subId, version])
 
   const topic = topics.find((t) => t.id === selectedId)
   const sub = detail?.subtopics.find((s) => s.id === subId)
@@ -224,7 +228,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
                       <span>
                         <strong>{s.title}</strong>
                         <small style={{ display: 'block' }}>
-                          {s.wordCount} слов
+                          {wordsCount(s.wordCount + s.lexiconWordCount)}
                         </small>
                       </span>
                       <ChevronRight size={16} />
@@ -264,8 +268,14 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
             <section className="glass-panel lexicon-panel">
               <StubMedia label={sub.title} />
               <h3>{sub.title}</h3>
-              <p>{sub.description || 'Подтема словаря'}</p>
-              <p className="caption">{sub.wordCount} слов</p>
+              {sub.description && <p>{sub.description}</p>}
+              <SubtopicWords
+                subtopicId={sub.id}
+                onChanged={() => {
+                  setVersion((v) => v + 1)
+                  void load()
+                }}
+              />
             </section>
             <AssignPanel
               sourceType="subtopic"

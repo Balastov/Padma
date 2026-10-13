@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BookOpen, Download } from 'lucide-react'
+import { BookOpen, Download, Volume2 } from 'lucide-react'
 import { api, friendlyDate, fullName } from '../api'
 import type { User } from '../api'
+import HomeworkLexicon from './HomeworkLexicon'
+import { sourceLabel, wordsCount } from './lexiconFormat'
+import type { LexiconSource } from './HomeworkLexicon'
+import { playWordAudio } from '../student/audio'
 import './Homework.css'
 
 type Submission = {
@@ -20,6 +24,21 @@ type Assignment = {
   description: string
   due: string
   submissions: Submission[]
+  lexicon: {
+    sources: {
+      id: number
+      kind: string
+      title: string
+      parentTitle: string
+      count: number
+    }[]
+    words: {
+      id: string
+      term: string
+      translation: string
+      transcription: string
+    }[]
+  }
 }
 const statuses = {
   submitted: 'На проверке',
@@ -38,6 +57,8 @@ export default function Homework({ students }: { students?: User[] }) {
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [lexicon, setLexicon] = useState<LexiconSource[]>([])
+  const [notice, setNotice] = useState('')
   const refresh = useCallback(async () => {
     try {
       setItems(await api<Assignment[]>('/homework'))
@@ -69,9 +90,26 @@ export default function Homework({ students }: { students?: User[] }) {
       fields = new FormData(form)
     setBusy(true)
     setError('')
+    setNotice('')
     try {
-      await api('/homework', 'POST', Object.fromEntries(fields))
+      const created = await api<{ duplicatesSkipped: number }>(
+        '/homework',
+        'POST',
+        {
+          ...Object.fromEntries(fields),
+          lexicon: lexicon.map((s) => ({
+            kind: s.kind,
+            id: s.id,
+            termIds: s.checked,
+          })),
+        },
+      )
       form.reset()
+      setLexicon([])
+      if (created.duplicatesSkipped)
+        setNotice(
+          `Задание выдано. Повторы исключены: ${created.duplicatesSkipped}.`,
+        )
       await refresh()
     } catch (err) {
       setError((err as Error).message)
@@ -124,6 +162,7 @@ export default function Homework({ students }: { students?: User[] }) {
                 Сдать до (Москва)
                 <input type="date" name="due" />
               </label>
+              <HomeworkLexicon value={lexicon} onChange={setLexicon} />
               <button className="button-primary" disabled={busy}>
                 {busy ? 'Сохраняем…' : 'Выдать задание'}
               </button>
@@ -136,6 +175,11 @@ export default function Homework({ students }: { students?: User[] }) {
       {error && (
         <p className="error" role="alert">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
         </p>
       )}
       {!ready && !error && <p role="status">Загружаем задания…</p>}
@@ -250,6 +294,40 @@ function AssignmentCard({
         </p>
       )}
       <p className="hw__text">{item.description}</p>
+      {!!item.lexicon?.words.length && (
+        <details className="hw__lexicon">
+          <summary>Лексика · {wordsCount(item.lexicon.words.length)}</summary>
+          {teacher && (
+            <ul className="hw__lexicon-sources">
+              {item.lexicon.sources.map((s) => (
+                <li key={s.id}>
+                  {s.kind === 'subtopic' ? 'Подтема' : s.kind === 'topic' ? 'Тема' : ''}{' '}
+                  <strong>{sourceLabel(s)}</strong> · {wordsCount(s.count)}
+                </li>
+              ))}
+            </ul>
+          )}
+          <ul className="hw__words">
+            {item.lexicon.words.map((w) => (
+              <li key={w.id}>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Произношение: ${w.term}`}
+                  onClick={() => void playWordAudio(w.term)}
+                >
+                  <Volume2 size={16} />
+                </button>
+                <span className="hw__word">{w.term}</span>
+                {w.transcription && (
+                  <span className="hw__ipa">{w.transcription}</span>
+                )}
+                <span className="hw__translation">{w.translation}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {!!item.submissions.length && (
         <details className="hw__history" open={last?.status !== 'accepted'}>
           <summary>История работы ({item.submissions.length})</summary>

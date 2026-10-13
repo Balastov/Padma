@@ -385,3 +385,27 @@
   overflow: auto;
   padding: 2px;
 }
+.lexicon-sub-words {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.lexicon-sub-words__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+.lexicon-sub-words__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #ffffff8c;
+  font-size: 0.9rem;
+}

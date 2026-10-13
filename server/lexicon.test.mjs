@@ -514,6 +514,113 @@ test('lexicon API: browse, search, term card, staff-only edits', async () => {
       detail.body.subtopics.map((s) => s.title),
       ['Кухня', 'Спальня'],
     )
+
+    // Subtopic words picked by the teacher from the dictionary.
+    const ids = Object.fromEntries(
+      (await request('/lexicon/search?limit=10', 'GET', undefined, teacher)).body.items.map(
+        (i) => [i.term, i.id],
+      ),
+    )
+    const kitchen = `/lexicon/subtopics/${sub.body.id}/terms`
+    assert.equal(
+      (await request(kitchen, 'POST', { termIds: [ids.basket] }, student)).status,
+      403,
+    )
+    assert.equal((await request(kitchen, 'GET', undefined, student)).status, 403)
+    const addKitchen = await request(kitchen, 'POST', { termIds: [ids.basket] }, teacher)
+    assert.equal(addKitchen.body.added, 1)
+    assert.equal(
+      (await request(kitchen, 'POST', { termIds: [ids.basket] }, teacher)).body.added,
+      0,
+    )
+    assert.equal(
+      (await request(kitchen, 'POST', { termIds: ['nope'] }, teacher)).status,
+      400,
+    )
+    await request(
+      `/lexicon/subtopics/${second.body.id}/terms`,
+      'POST',
+      { termIds: [ids['town hall']] },
+      teacher,
+    )
+    const homeTerms = await request(
+      `/lexicon/topics/${home.id}/terms`,
+      'GET',
+      undefined,
+      teacher,
+    )
+    assert.deepEqual(
+      homeTerms.body.terms.map((t) => t.term),
+      ['arrive', 'basket', 'town hall'],
+    )
+    assert.deepEqual(
+      homeTerms.body.subtopics.map((s) => [s.title, s.termCount]),
+      [
+        ['Кухня', 1],
+        ['Спальня', 1],
+      ],
+    )
+    assert.equal(
+      (await request(`/vocab/topics/${home.id}`, 'GET', undefined, teacher)).body
+        .subtopics[0].lexiconWordCount,
+      1,
+    )
+
+    // Homework with vocabulary from several sources, de-duplicated.
+    db.prepare("UPDATE users SET teacherId='teacher' WHERE id='student'").run()
+    const homework = (lexicon) =>
+      request(
+        '/homework',
+        'POST',
+        { studentId: 'student', title: 'Words', description: 'Learn', due: '', lexicon },
+        teacher,
+      )
+    const hwCount = () => db.prepare('SELECT count(*) AS n FROM homework').get().n
+    for (const bad of [
+      [{ kind: 'collection', id: 'x', termIds: [ids.basket] }],
+      [{ kind: 'topic', id: otherTopic.id, termIds: [ids.arrive] }],
+      [{ kind: 'subtopic', id: sub.body.id, termIds: [ids['town hall']] }],
+      [{ kind: 'search', termIds: ['nope'] }],
+    ])
+      assert.equal((await homework(bad)).status, 400)
+    assert.equal(hwCount(), 0)
+    const hw = await homework([
+      { kind: 'subtopic', id: sub.body.id, termIds: [ids.basket] },
+      { kind: 'topic', id: home.id, termIds: [ids.arrive, ids.basket] },
+      { kind: 'search', termIds: [ids['town hall'], ids.basket] },
+      { kind: 'search', termIds: [ids.arrive] },
+    ])
+    assert.equal(hw.status, 201)
+    assert.equal(hw.body.duplicatesSkipped, 3)
+    assert.deepEqual(
+      hw.body.lexicon.sources.map((s) => [s.kind, s.title, s.parentTitle, s.count]),
+      [
+        ['subtopic', 'Кухня', 'Дом и еда', 1],
+        ['topic', 'Дом и еда', '', 1],
+        ['search', 'Поиск по словарю', '', 1],
+      ],
+    )
+    assert.deepEqual(
+      hw.body.lexicon.words.map((w) => [w.term, w.translation]),
+      [
+        ['basket', 'корзинка'],
+        ['arrive', 'приезжать'],
+        ['town hall', 'ратуша'],
+      ],
+    )
+    assert.equal((await homework(undefined)).body.lexicon.words.length, 0)
+
+    // Snapshot survives dictionary edits; the student sees the words.
+    await request(`/lexicon/terms/${ids.basket}`, 'PATCH', { translation: 'лукошко' }, teacher)
+    const studentHw = await request('/homework', 'GET', undefined, student)
+    const seen = studentHw.body.find((h) => h.id === hw.body.id)
+    assert.deepEqual(
+      seen.lexicon.words.map((w) => w.translation),
+      ['корзинка', 'приезжать', 'ратуша'],
+    )
+
+    const removed = await request(`${kitchen}/${ids.basket}`, 'DELETE', undefined, teacher)
+    assert.deepEqual(removed.body.terms, [])
   } finally {
     server.close()
     rmSync(dir, { recursive: true, force: true })

@@ -134,6 +134,10 @@ API (чтение — любой вошедший пользователь, пр
 - `GET|PATCH /api/lexicon/terms/:id` — карточка термина со всеми вхождениями; правка `term`, `translation`, `transcription`.
 - `PATCH /api/lexicon/occurrences/:id` — правка `sentence`, `transcription` вхождения.
 
+Слова подтем учитель выбирает сам на странице «Темы» (`lexicon_subtopic_terms`; у termId нет внешнего ключа, поэтому выбор переживает импорт с --replace). Слова темы = слова её юнитов учебников + слова её подтем. API (только преподаватель): `GET /api/lexicon/topics/:id/terms` (подтемы и слова темы), `GET|POST /api/lexicon/subtopics/:id/terms` (`{ termIds }`), `DELETE /api/lexicon/subtopics/:id/terms/:termId`.
+
+Лексика в ДЗ: `POST /api/homework` принимает `lexicon: [{ kind: 'topic'|'subtopic'|'search', id?, termIds }]`. Сервер проверяет, что слова принадлежат источнику, убирает повторы внутри задания (ответ `duplicatesSkipped`) и сохраняет снимок слов (`homework_terms`) и источников (`homework_lexicon_sources`) — правки словаря не меняют выданные задания. Коллекции и «Слова уроков» пока отклоняются. В выдаче ДЗ поле `lexicon: { sources, words }`.
+
 `server/lexicon.test.mjs` проверяет чтение XLSX, валидацию и защиту от повторного импорта, выдачу API, поиск по-русски и по-английски, запрет правок ученику.
 
 ## Публикация и backup
