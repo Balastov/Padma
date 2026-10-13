@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "start": "node server/index.mjs",
     "seed:doc": "node scripts/seed.mjs",
+    "import:lexicon": "node scripts/import-lexicon.mjs",
     "test": "node --test server/*.test.mjs"
   },
   "dependencies": {

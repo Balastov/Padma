@@ -1,0 +1,338 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { deflateRawSync } from 'node:zlib'
+import { createApp } from './index.mjs'
+import { hashPassword } from './store.mjs'
+import { readXlsx } from './xlsx.mjs'
+import { importLexicon } from './lexicon.mjs'
+
+// Builds a tiny XLSX: shared strings for text, inline numbers for units.
+function buildXlsx(table) {
+  const esc = (s) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+  const strings = []
+  const rows = table
+    .map((row, r) => {
+      const cells = row
+        .map((value, c) => {
+          const ref = String.fromCharCode(65 + c) + (r + 1)
+          if (typeof value === 'number') return `<c r="${ref}"><v>${value}</v></c>`
+          if (value === '') return `<c r="${ref}" s="1"/>`
+          strings.push(value)
+          return `<c r="${ref}" t="s"><v>${strings.length - 1}</v></c>`
+        })
+        .join('')
+      return `<row r="${r + 1}">${cells}</row>`
+    })
+    .join('')
+  const files = {
+    'xl/workbook.xml':
+      '<workbook xmlns:r="r"><sheets><sheet name="Вхождения" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':
+      '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/sharedStrings.xml': `<sst>${strings
+      .map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`)
+      .join('')}</sst>`,
+    'xl/worksheets/sheet1.xml': `<worksheet><sheetData>${rows}</sheetData></worksheet>`,
+  }
+  const locals = []
+  const central = []
+  let offset = 0
+  Object.entries(files).forEach(([name, content], index) => {
+    const raw = Buffer.from(content)
+    const method = index % 2 ? 0 : 8
+    const data = method ? deflateRawSync(raw) : raw
+    const nameBuf = Buffer.from(name)
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(method, 8)
+    local.writeUInt32LE(data.length, 18)
+    local.writeUInt32LE(raw.length, 22)
+    local.writeUInt16LE(nameBuf.length, 26)
+    const entry = Buffer.alloc(46)
+    entry.writeUInt32LE(0x02014b50, 0)
+    entry.writeUInt16LE(method, 10)
+    entry.writeUInt32LE(data.length, 20)
+    entry.writeUInt32LE(raw.length, 24)
+    entry.writeUInt16LE(nameBuf.length, 28)
+    entry.writeUInt32LE(offset, 42)
+    locals.push(local, nameBuf, data)
+    central.push(entry, nameBuf)
+    offset += local.length + nameBuf.length + data.length
+  })
+  const dir = Buffer.concat(central)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(Object.keys(files).length, 8)
+  end.writeUInt16LE(Object.keys(files).length, 10)
+  end.writeUInt32LE(dir.length, 12)
+  end.writeUInt32LE(offset, 16)
+  return Buffer.concat([...locals, dir, end])
+}
+
+const HEADER = [
+  'Термин',
+  'Перевод',
+  'Контекстное предложение',
+  'Учебник',
+  'Уровень книги',
+  'Юнит',
+  'Тема',
+  'Транскрипция из индекса',
+]
+const TABLE = [
+  HEADER,
+  ['basket', 'корзина', 'She wrote "basket" in her notes.', 'Elementary', 'A1-A2', 3, 'Дом & еда', 'ˈbæskət'],
+  ['arrive', 'приезжать', 'I heard "arrive" in a conversation.', 'Elementary', 'A1-A2', 3, 'Дом & еда', ''],
+  ['basket', 'корзина', 'She wrote "basket" in her notes.', 'Elementary', 'A1-A2', 3, 'Дом & еда', 'ˈbæskət'],
+  ['Basket', 'Корзина', 'We used "basket" in class today.', 'Upper-Intermediate', 'B2', 3, 'Покупки', '/ˈbɑːskɪt/'],
+  ['', '', '', '', '', '', '', ''],
+  ['town hall', 'ратуша', 'The teacher explained "town hall" clearly.', 'Upper-Intermediate', 'B2', 7, 'Город', '/ˌtaʊn ˈhɔːl/'],
+]
+
+test('xlsx reader and lexicon import validation', () => {
+  const rows = readXlsx(buildXlsx(TABLE))
+  assert.equal(rows.length, TABLE.length)
+  assert.deepEqual(rows[0].cells, HEADER)
+  assert.equal(rows[1].cells[6], 'Дом & еда')
+  assert.equal(rows[1].cells[5], '3')
+  assert.equal(rows[2].cells[7], '')
+  assert.throws(() => readXlsx(Buffer.from('not a zip')), /XLSX/)
+
+  const dir = mkdtempSync(join(tmpdir(), 'padma-lexicon-unit-'))
+  const { db } = createApp({ dbPath: join(dir, 'test.sqlite') })
+  try {
+    assert.throws(
+      () => importLexicon(db, [{ number: 1, cells: ['Термин', 'Перевод'] }]),
+      /Нет колонок: Учебник, Юнит, Тема/,
+    )
+    const broken = readXlsx(
+      buildXlsx([
+        HEADER,
+        ['ok', 'ок', '', 'Elementary', 'A1-A2', 1, 'Тема', ''],
+        ['bad', 'плохо', '', 'Elementary', 'A1-A2', 'x', 'Тема', ''],
+        ['clash', 'конфликт', '', 'Elementary', 'A1-A2', 1, 'Другая', ''],
+      ]),
+    )
+    assert.throws(
+      () => importLexicon(db, broken),
+      (error) =>
+        /строка 3: юнит/.test(error.message) &&
+        /строка 4: у юнита 1/.test(error.message),
+    )
+    assert.equal(db.prepare('SELECT count(*) AS n FROM lexicon_terms').get().n, 0)
+
+    const stats = importLexicon(db, rows)
+    assert.deepEqual(stats, {
+      books: 2,
+      units: 3,
+      terms: 3,
+      occurrences: 4,
+      duplicates: 1,
+      withoutTranscription: 1,
+    })
+    assert.throws(() => importLexicon(db, rows), /--replace/)
+    assert.equal(importLexicon(db, rows, { replace: true }).terms, 3)
+  } finally {
+    db.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('lexicon API: browse, search, term card, staff-only edits', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'padma-lexicon-'))
+  const { server, db } = createApp({ dbPath: join(dir, 'test.sqlite') })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const base = `http://127.0.0.1:${server.address().port}/api`
+  const password = randomBytes(18).toString('hex'),
+    hash = await hashPassword(password)
+  for (const [id, roles] of [
+    ['teacher', ['teacher']],
+    ['student', ['student']],
+  ])
+    db.prepare(
+      'INSERT INTO users (id,name,email,password,roles) VALUES (?,?,?,?,?)',
+    ).run(id, id, `${id}@example.test`, hash, JSON.stringify(roles))
+  importLexicon(db, readXlsx(buildXlsx(TABLE)))
+
+  async function request(path, method = 'GET', body, cookie = '') {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json',
+        Cookie: cookie,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    return { status: res.status, body: await res.json() }
+  }
+  async function login(id) {
+    const res = await fetch(base + '/login', {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: `${id}@example.test`, password }),
+    })
+    assert.equal(res.status, 200)
+    return res.headers.get('set-cookie').split(';')[0]
+  }
+  try {
+    assert.equal((await request('/lexicon/books')).status, 401)
+    const teacher = await login('teacher')
+    const student = await login('student')
+
+    const books = await request('/lexicon/books', 'GET', undefined, student)
+    assert.equal(books.status, 200)
+    assert.deepEqual(
+      books.body.map((b) => [b.id, b.title, b.level, b.units.length]),
+      [
+        ['elementary', 'Elementary', 'A1-A2', 1],
+        ['upper-intermediate', 'Upper-Intermediate', 'B2', 2],
+      ],
+    )
+    assert.deepEqual(books.body[0].units[0], {
+      id: 'elementary-3',
+      number: 3,
+      theme: 'Дом & еда',
+      termCount: 2,
+    })
+
+    const themes = await request('/lexicon/themes', 'GET', undefined, student)
+    assert.deepEqual(
+      themes.body.map((t) => [t.title, t.termCount]),
+      [
+        ['Город', 1],
+        ['Дом & еда', 2],
+        ['Покупки', 1],
+      ],
+    )
+
+    const unit = await request(
+      '/lexicon/units/upper-intermediate-3',
+      'GET',
+      undefined,
+      student,
+    )
+    assert.equal(unit.status, 200)
+    assert.equal(unit.body.book.level, 'B2')
+    assert.deepEqual(
+      unit.body.entries.map((e) => [e.term, e.transcription, e.sentence]),
+      [['basket', 'ˈbɑːskɪt', 'We used "basket" in class today.']],
+    )
+    assert.equal(
+      (await request('/lexicon/units/nope-1', 'GET', undefined, student)).status,
+      404,
+    )
+
+    const byWord = await request('/lexicon/search?q=BASK', 'GET', undefined, student)
+    assert.equal(byWord.body.total, 1)
+    assert.equal(byWord.body.items[0].transcription, 'ˈbæskət')
+    assert.deepEqual(
+      byWord.body.items[0].units.map((u) => u.id),
+      ['elementary-3', 'upper-intermediate-3'],
+    )
+    const byTranslation = await request(
+      `/lexicon/search?q=${encodeURIComponent('РАТУ')}`,
+      'GET',
+      undefined,
+      student,
+    )
+    assert.deepEqual(byTranslation.body.items.map((i) => i.term), ['town hall'])
+    const byTheme = await request(
+      `/lexicon/search?theme=${encodeURIComponent('Дом & еда')}`,
+      'GET',
+      undefined,
+      student,
+    )
+    assert.deepEqual(byTheme.body.items.map((i) => i.term), ['arrive', 'basket'])
+    const byBook = await request(
+      '/lexicon/search?bookId=upper-intermediate&limit=1&offset=1',
+      'GET',
+      undefined,
+      student,
+    )
+    assert.equal(byBook.body.total, 2)
+    assert.deepEqual(byBook.body.items.map((i) => i.term), ['town hall'])
+    assert.equal(
+      (await request('/lexicon/search?q=%25', 'GET', undefined, student)).body
+        .total,
+      0,
+    )
+
+    const termId = byWord.body.items[0].id
+    const card = await request(`/lexicon/terms/${termId}`, 'GET', undefined, student)
+    assert.equal(card.body.occurrences.length, 2)
+    const occurrenceId = card.body.occurrences[1].id
+
+    assert.equal(
+      (
+        await request(
+          `/lexicon/terms/${termId}`,
+          'PATCH',
+          { translation: 'взлом' },
+          student,
+        )
+      ).status,
+      403,
+    )
+    assert.equal(
+      (
+        await request(
+          `/lexicon/occurrences/${occurrenceId}`,
+          'PATCH',
+          { sentence: 'взлом' },
+          student,
+        )
+      ).status,
+      403,
+    )
+    assert.equal(
+      (
+        await request(
+          `/lexicon/terms/${termId}`,
+          'PATCH',
+          { term: 'Town Hall' },
+          teacher,
+        )
+      ).status,
+      409,
+    )
+    const edited = await request(
+      `/lexicon/terms/${termId}`,
+      'PATCH',
+      { translation: 'корзинка', transcription: '/ˈbɑːskɪt/' },
+      teacher,
+    )
+    assert.equal(edited.status, 200)
+    assert.equal(edited.body.translation, 'корзинка')
+    assert.equal(edited.body.transcription, 'ˈbɑːskɪt')
+    assert.equal(edited.body.term, 'basket')
+    const sentence = await request(
+      `/lexicon/occurrences/${occurrenceId}`,
+      'PATCH',
+      { sentence: 'Put the apples in the basket.' },
+      teacher,
+    )
+    assert.equal(sentence.status, 200)
+    assert.equal(sentence.body.transcription, 'ˈbɑːskɪt')
+    const found = await request(
+      `/lexicon/search?q=${encodeURIComponent('корзинка')}`,
+      'GET',
+      undefined,
+      student,
+    )
+    assert.equal(found.body.total, 1)
+    const after = await request(`/lexicon/terms/${termId}`, 'GET', undefined, student)
+    assert.equal(after.body.occurrences[1].sentence, 'Put the apples in the basket.')
+  } finally {
+    server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
