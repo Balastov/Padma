@@ -4,75 +4,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { deflateRawSync } from 'node:zlib'
 import { createApp } from './index.mjs'
 import { hashPassword } from './store.mjs'
 import { readXlsx } from './xlsx.mjs'
+import { buildXlsx } from './testXlsx.mjs'
 import { importLexicon, initLexicon } from './lexicon.mjs'
-
-// Builds a tiny XLSX: shared strings for text, inline numbers for units.
-function buildXlsx(table) {
-  const esc = (s) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
-  const strings = []
-  const rows = table
-    .map((row, r) => {
-      const cells = row
-        .map((value, c) => {
-          const ref = String.fromCharCode(65 + c) + (r + 1)
-          if (typeof value === 'number') return `<c r="${ref}"><v>${value}</v></c>`
-          if (value === '') return `<c r="${ref}" s="1"/>`
-          strings.push(value)
-          return `<c r="${ref}" t="s"><v>${strings.length - 1}</v></c>`
-        })
-        .join('')
-      return `<row r="${r + 1}">${cells}</row>`
-    })
-    .join('')
-  const files = {
-    'xl/workbook.xml':
-      '<workbook xmlns:r="r"><sheets><sheet name="Вхождения" sheetId="1" r:id="rId1"/></sheets></workbook>',
-    'xl/_rels/workbook.xml.rels':
-      '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
-    'xl/sharedStrings.xml': `<sst>${strings
-      .map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`)
-      .join('')}</sst>`,
-    'xl/worksheets/sheet1.xml': `<worksheet><sheetData>${rows}</sheetData></worksheet>`,
-  }
-  const locals = []
-  const central = []
-  let offset = 0
-  Object.entries(files).forEach(([name, content], index) => {
-    const raw = Buffer.from(content)
-    const method = index % 2 ? 0 : 8
-    const data = method ? deflateRawSync(raw) : raw
-    const nameBuf = Buffer.from(name)
-    const local = Buffer.alloc(30)
-    local.writeUInt32LE(0x04034b50, 0)
-    local.writeUInt16LE(method, 8)
-    local.writeUInt32LE(data.length, 18)
-    local.writeUInt32LE(raw.length, 22)
-    local.writeUInt16LE(nameBuf.length, 26)
-    const entry = Buffer.alloc(46)
-    entry.writeUInt32LE(0x02014b50, 0)
-    entry.writeUInt16LE(method, 10)
-    entry.writeUInt32LE(data.length, 20)
-    entry.writeUInt32LE(raw.length, 24)
-    entry.writeUInt16LE(nameBuf.length, 28)
-    entry.writeUInt32LE(offset, 42)
-    locals.push(local, nameBuf, data)
-    central.push(entry, nameBuf)
-    offset += local.length + nameBuf.length + data.length
-  })
-  const dir = Buffer.concat(central)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(Object.keys(files).length, 8)
-  end.writeUInt16LE(Object.keys(files).length, 10)
-  end.writeUInt32LE(dir.length, 12)
-  end.writeUInt32LE(offset, 16)
-  return Buffer.concat([...locals, dir, end])
-}
 
 const HEADER = [
   'Термин',

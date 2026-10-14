@@ -7,20 +7,21 @@ import { staff } from './store.mjs'
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
 }
-const clean = (value, max) =>
+export const clean = (value, max) =>
   typeof value === 'string'
     ? value.replace(/\s+/g, ' ').trim().slice(0, max)
     : ''
-const keyOf = (value) => clean(value, 200).toLocaleLowerCase('ru')
-const transcriptionOf = (value) =>
+export const keyOf = (value) => clean(value, 200).toLocaleLowerCase('ru')
+// Index transcriptions come as /…/ or […]; store them bare.
+export const transcriptionOf = (value) =>
   clean(value, 200)
-    .replace(/^\/+|\/+$/g, '')
+    .replace(/^[/[]+|[/\]]+$/g, '')
     .trim()
-const slug = (value) =>
+export const slug = (value) =>
   keyOf(value)
     .replace(/[^a-z0-9а-яё]+/g, '-')
     .replace(/^-+|-+$/g, '')
-const termId = (key) =>
+export const termId = (key) =>
   createHash('sha256').update(key).digest('hex').slice(0, 16)
 const likeOf = (value) => `%${value.replace(/[\\%_]/g, '\\$&')}%`
 
@@ -46,6 +47,21 @@ const LABELS = {
 // Lexicon units point at vocab_topics: one "Тема" entity shared with the
 // teacher's dictionary. lexicon_units.theme keeps a copy of the title for
 // filtering and is synced on rename (see vocab.mjs).
+// Author for topics/subtopics created by imports: owner, admin or teacher.
+export function systemAuthor(db) {
+  const users = db
+    .prepare('SELECT id, roles FROM users WHERE archived=0 ORDER BY rowid')
+    .all()
+    .map((u) => ({ id: u.id, roles: JSON.parse(u.roles) }))
+  for (const role of ['owner', 'admin', 'teacher']) {
+    const found = users.find((u) => u.roles.includes(role))
+    if (found) return found.id
+  }
+  throw new Error(
+    'Нет преподавателя или владельца, от имени которого создать темы',
+  )
+}
+
 function ensureTopics(db, titles) {
   const byKey = new Map()
   for (const t of db
@@ -65,23 +81,14 @@ function ensureTopics(db, titles) {
       result.set(title, found)
       continue
     }
-    if (!owner) {
-      const users = db
-        .prepare('SELECT id, roles FROM users WHERE archived=0 ORDER BY rowid')
-        .all()
-        .map((u) => ({ id: u.id, roles: JSON.parse(u.roles) }))
-      for (const role of ['owner', 'admin', 'teacher'])
-        owner ??= users.find((u) => u.roles.includes(role))
-    }
-    if (!owner)
-      throw new Error('Нет преподавателя или владельца, от имени которого создать темы')
+    owner ??= systemAuthor(db)
     const now = new Date().toISOString()
     const topic = { id: randomUUID(), title, archived: 0 }
     db.prepare(
       `INSERT INTO vocab_topics
        (id, title, description, kind, createdBy, created, updated, archived)
        VALUES (?,?,'','main',?,?,?,0)`,
-    ).run(topic.id, title, owner.id, now, now)
+    ).run(topic.id, title, owner, now, now)
     byKey.set(key, topic)
     result.set(title, topic)
   }
@@ -142,6 +149,23 @@ export function initLexicon(db) {
   db.exec(
     'CREATE INDEX IF NOT EXISTS lexicon_units_topic ON lexicon_units(topicId)',
   )
+  // Per-unit data from curated book files (see lexiconBook.mjs).
+  for (const [table, column, definition] of [
+    ['lexicon_occurrences', 'translation', "TEXT NOT NULL DEFAULT ''"],
+    ['lexicon_occurrences', 'translationKey', "TEXT NOT NULL DEFAULT ''"],
+    ['lexicon_occurrences', 'sentenceTranslation', "TEXT NOT NULL DEFAULT ''"],
+    ['lexicon_occurrences', 'pos', "TEXT NOT NULL DEFAULT ''"],
+    ['lexicon_occurrences', 'category', "TEXT NOT NULL DEFAULT ''"],
+    ['lexicon_units', 'title', "TEXT NOT NULL DEFAULT ''"],
+    ['vocab_subtopics', 'lexiconUnitId', 'TEXT'],
+  ])
+    if (
+      !db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .some((c) => c.name === column)
+    )
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
   const unlinked = db
     .prepare('SELECT DISTINCT theme FROM lexicon_units WHERE topicId IS NULL')
     .all()
@@ -328,6 +352,8 @@ export function importLexicon(db, rows, { replace = false } = {}) {
 }
 
 const TERM_ORDER = `ltrim(t.termKey, '(-./''" '), t.termKey`
+// Unit-specific translation wins over the term's general one.
+const OCC_TRANSLATION = "coalesce(nullif(o.translation, ''), t.translation)"
 
 // Words of a topic: textbook units of the topic plus words of its subtopics.
 export function topicTerms(db, topicId) {
@@ -346,11 +372,19 @@ export function topicTerms(db, topicId) {
     .all(topicId, topicId)
 }
 
+// Subtopics generated from a textbook unit show that unit's translation.
 export function subtopicTerms(db, subtopicId) {
   return db
     .prepare(
-      `SELECT t.id, t.term, t.translation, t.transcription
-       FROM lexicon_subtopic_terms st JOIN lexicon_terms t ON t.id = st.termId
+      `SELECT t.id, t.term,
+              coalesce(nullif(o.translation, ''), t.translation) AS translation,
+              coalesce(nullif(o.transcription, ''), t.transcription) AS transcription
+       FROM lexicon_subtopic_terms st
+       JOIN lexicon_terms t ON t.id = st.termId
+       JOIN vocab_subtopics s ON s.id = st.subtopicId
+       LEFT JOIN lexicon_occurrences o ON o.id = (
+         SELECT min(x.id) FROM lexicon_occurrences x
+         WHERE x.termId = t.id AND x.unitId = s.lexiconUnitId)
        WHERE st.subtopicId = ? ORDER BY st.sortOrder, ${TERM_ORDER}`,
     )
     .all(subtopicId)
@@ -368,7 +402,9 @@ function occurrencesOf(db, termIds) {
   const rows = db
     .prepare(
       `SELECT o.id, o.termId, o.sentence, o.transcription, o.unitId,
-              u.number AS unitNumber, u.theme, u.bookId, b.title AS bookTitle, b.level
+              o.translation, o.sentenceTranslation, o.pos, o.category,
+              u.number AS unitNumber, u.theme, u.title AS unitTitle,
+              u.bookId, b.title AS bookTitle, b.level
        FROM lexicon_occurrences o
        JOIN lexicon_units u ON u.id = o.unitId
        JOIN lexicon_books b ON b.id = u.bookId
@@ -381,10 +417,15 @@ function occurrencesOf(db, termIds) {
     result.get(row.termId).push({
       id: row.id,
       sentence: row.sentence,
+      sentenceTranslation: row.sentenceTranslation,
       transcription: row.transcription,
+      translation: row.translation,
+      pos: row.pos,
+      category: row.category,
       unit: {
         id: row.unitId,
         number: row.unitNumber,
+        title: row.unitTitle,
         theme: row.theme,
         bookId: row.bookId,
         bookTitle: row.bookTitle,
@@ -411,7 +452,7 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
         `SELECT s.id, s.title, count(st.termId) AS termCount FROM vocab_subtopics s
          LEFT JOIN lexicon_subtopic_terms st ON st.subtopicId = s.id
          WHERE s.topicId = ? AND s.archived = 0
-         GROUP BY s.id ORDER BY s.title COLLATE NOCASE`,
+         GROUP BY s.id ORDER BY CAST(s.title AS INTEGER) = 0, CAST(s.title AS INTEGER), s.title COLLATE NOCASE`,
       )
       .all(topic.id)
     send(200, { ...topic, subtopics, terms: topicTerms(db, topic.id) })
@@ -563,15 +604,18 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     if (!unit) fail(404, 'Юнит не найден')
     const entries = db
       .prepare(
-        `SELECT o.id, o.sentence, o.transcription AS ownTranscription,
-                t.id AS termId, t.term, t.translation, t.transcription
+        `SELECT o.id, o.sentence, o.sentenceTranslation, o.pos, o.category,
+                o.transcription AS ownTranscription,
+                t.id AS termId, t.term, ${OCC_TRANSLATION} AS translation,
+                t.transcription
          FROM lexicon_occurrences o JOIN lexicon_terms t ON t.id = o.termId
-         WHERE o.unitId = ? ORDER BY t.termKey, o.sortOrder`,
+         WHERE o.unitId = ? ORDER BY o.sortOrder, t.termKey`,
       )
       .all(unit.id)
     send(200, {
       id: unit.id,
       number: unit.number,
+      title: unit.title,
       theme: unit.theme,
       book: { id: unit.bookId, title: unit.bookTitle, level: unit.level },
       entries: entries.map((e) => ({
@@ -581,6 +625,9 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
         translation: e.translation,
         transcription: e.ownTranscription || e.transcription,
         sentence: e.sentence,
+        sentenceTranslation: e.sentenceTranslation,
+        pos: e.pos,
+        category: e.category,
       })),
     })
     return true
@@ -595,9 +642,9 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     const args = []
     if (q) {
       where.push(
-        "(t.termKey LIKE ? ESCAPE '\\' OR t.translationKey LIKE ? ESCAPE '\\')",
+        "(t.termKey LIKE ? ESCAPE '\\' OR t.translationKey LIKE ? ESCAPE '\\' OR o.translationKey LIKE ? ESCAPE '\\')",
       )
-      args.push(likeOf(q), likeOf(q))
+      args.push(likeOf(q), likeOf(q), likeOf(q))
     }
     const bookIds = [
       ...new Set(
@@ -634,9 +681,12 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     const rankArgs = q ? [q, likeOf(q).slice(1), q] : []
     const rows = db
       .prepare(
-        `SELECT o.id, o.sentence, o.transcription AS ownTranscription,
-                t.id AS termId, t.term, t.translation, t.transcription,
+        `SELECT o.id, o.sentence, o.sentenceTranslation, o.pos, o.category,
+                o.transcription AS ownTranscription,
+                t.id AS termId, t.term, ${OCC_TRANSLATION} AS translation,
+                t.transcription,
                 u.id AS unitId, u.number AS unitNumber, u.theme,
+                u.title AS unitTitle,
                 b.id AS bookId, b.title AS bookTitle, b.level
          ${from}
          ORDER BY ${rank} ltrim(t.termKey, '(-./''" '), t.termKey,
@@ -655,11 +705,15 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
         translation: r.translation,
         transcription: r.ownTranscription || r.transcription,
         sentence: r.sentence,
+        sentenceTranslation: r.sentenceTranslation,
+        pos: r.pos,
+        category: r.category,
         level: r.level,
         bookId: r.bookId,
         bookTitle: r.bookTitle,
         unitId: r.unitId,
         unitNumber: r.unitNumber,
+        unitTitle: r.unitTitle,
         theme: r.theme,
       })),
     })
@@ -678,9 +732,11 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     const args = []
     if (q) {
       where.push(
-        "(t.termKey LIKE ? ESCAPE '\\' OR t.translationKey LIKE ? ESCAPE '\\')",
+        `(t.termKey LIKE ? ESCAPE '\\' OR t.translationKey LIKE ? ESCAPE '\\'
+          OR EXISTS (SELECT 1 FROM lexicon_occurrences x
+            WHERE x.termId = t.id AND x.translationKey LIKE ? ESCAPE '\\'))`,
       )
-      args.push(likeOf(q), likeOf(q))
+      args.push(likeOf(q), likeOf(q), likeOf(q))
     }
     if (bookId || unitId || theme || topicId) {
       const filters = []

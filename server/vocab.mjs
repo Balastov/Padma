@@ -406,7 +406,7 @@ function visibleCatalog(db, user) {
 
   const subtopics = db
     .prepare(
-      `SELECT * FROM vocab_subtopics WHERE archived=0 ORDER BY title COLLATE NOCASE`,
+      `SELECT * FROM vocab_subtopics WHERE archived=0 ORDER BY CAST(title AS INTEGER) = 0, CAST(title AS INTEGER), title COLLATE NOCASE`,
     )
     .all()
     .filter(
@@ -540,7 +540,7 @@ function visibleCatalog(db, user) {
     subtopics: staff(user)
       ? db
           .prepare(
-            `SELECT * FROM vocab_subtopics WHERE archived=0 ORDER BY title COLLATE NOCASE`,
+            `SELECT * FROM vocab_subtopics WHERE archived=0 ORDER BY CAST(title AS INTEGER) = 0, CAST(title AS INTEGER), title COLLATE NOCASE`,
           )
           .all()
           .map((s) => ({
@@ -707,7 +707,7 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
       const subtopics = db
         .prepare(
           `SELECT * FROM vocab_subtopics WHERE topicId=? AND archived=0
-           ORDER BY title COLLATE NOCASE`,
+           ORDER BY CAST(title AS INTEGER) = 0, CAST(title AS INTEGER), title COLLATE NOCASE`,
         )
         .all(id)
         .map((s) => ({

@@ -30,6 +30,10 @@ type LexiconEntry = {
   translation: string
   transcription: string
   sentence: string
+  sentenceTranslation: string
+  pos: string
+  category: string
+  unitTitle: string
   level: string
   bookId: string
   bookTitle: string
@@ -335,7 +339,11 @@ export default function DictionaryAllPage() {
                       {e.level && <span className="pill">{e.level}</span>}
                     </td>
                     <td>{e.theme}</td>
-                    <td title={e.bookTitle}>{e.unitNumber}</td>
+                    <td
+                      title={[e.bookTitle, e.unitTitle].filter(Boolean).join(' · ')}
+                    >
+                      {e.unitNumber}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -392,16 +400,27 @@ export default function DictionaryAllPage() {
             <div className="lexicon-toolbar">
               {current.level && <span className="pill">{current.level}</span>}
               <span className="pill">Юнит {current.unitNumber}</span>
+              {current.pos && <span className="pill">{current.pos}</span>}
+              {current.category && (
+                <span className="pill">{current.category}</span>
+              )}
             </div>
             <div>
               <small>Тема</small>
               <p>{current.theme}</p>
-              <p className="secondary">{current.bookTitle}</p>
+              <p className="secondary">
+                {current.bookTitle}
+                {current.unitTitle &&
+                  ` · ${current.unitNumber}. ${current.unitTitle}`}
+              </p>
             </div>
             {current.sentence && (
               <div>
                 <small>Пример</small>
                 <p>{current.sentence}</p>
+                {current.sentenceTranslation && (
+                  <p className="secondary">{current.sentenceTranslation}</p>
+                )}
               </div>
             )}
           </section>

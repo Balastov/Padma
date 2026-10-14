@@ -1,6 +1,7 @@
 import { inflateRawSync } from 'node:zlib'
 
-// Minimal XLSX reader: first worksheet as an array of rows (string cells).
+// Minimal XLSX reader: worksheets as arrays of rows (string cells). Tags may
+// carry a namespace prefix (<x:row>), as written by some generators.
 // Supports stored/deflated zip entries; ZIP64 and encrypted files are rejected.
 
 const MAX_ENTRY = 200 * 1024 * 1024
@@ -72,8 +73,8 @@ const textRuns = (xml) =>
   decode(
     [
       ...xml
-        .replace(/<rPh\b[\s\S]*?<\/rPh>/g, '')
-        .matchAll(/<t(?:\s[^>]*)?(?:\/>|>([\s\S]*?)<\/t>)/g),
+        .replace(/<(?:\w+:)?rPh\b[\s\S]*?<\/(?:\w+:)?rPh>/g, '')
+        .matchAll(/<(?:\w+:)?t(?:\s[^>]*)?(?:\/>|>([\s\S]*?)<\/(?:\w+:)?t>)/g),
     ]
       .map((m) => m[1] || '')
       .join(''),
@@ -89,43 +90,44 @@ const columnIndex = (ref) => {
   return index - 1
 }
 
-function firstSheetPath(read) {
+// Sheets in workbook order: [{ name, path }].
+function sheetPaths(read) {
   const workbook = read('xl/workbook.xml')
-  const rels = read('xl/_rels/workbook.xml.rels')
-  const sheet = workbook && /<sheet\b([^>]*)\/?>/.exec(workbook)?.[1]
-  const id = sheet && attr(sheet, 'r:id')
-  const target =
-    id &&
-    rels &&
-    [...rels.matchAll(/<Relationship\b([^>]*)\/?>/g)]
-      .map((m) => m[1])
-      .find((r) => attr(r, 'Id') === id)
-  const path = target && attr(target, 'Target')
-  if (!path) return 'xl/worksheets/sheet1.xml'
-  return path.startsWith('/') ? path.slice(1) : `xl/${path}`
+  const rels = read('xl/_rels/workbook.xml.rels') || ''
+  const targets = new Map(
+    [...rels.matchAll(/<(?:\w+:)?Relationship\b([^>]*)\/?>/g)].map((m) => [
+      attr(m[1], 'Id'),
+      attr(m[1], 'Target'),
+    ]),
+  )
+  const sheets = [...(workbook || '').matchAll(/<(?:\w+:)?sheet\b([^>]*)\/?>/g)]
+    .map((m) => ({
+      name: decode(attr(m[1], 'name') || ''),
+      target: targets.get(attr(m[1], 'r:id')),
+    }))
+    .filter((sheet) => sheet.target)
+    .map(({ name, target }) => ({
+      name,
+      path: target.startsWith('/') ? target.slice(1) : `xl/${target}`,
+    }))
+  return sheets.length
+    ? sheets
+    : [{ name: 'Sheet1', path: 'xl/worksheets/sheet1.xml' }]
 }
 
-export function readXlsx(buffer) {
-  const read = unzip(buffer)
-  const shared = [
-    ...(read('xl/sharedStrings.xml') || '').matchAll(
-      /<si(?:\s[^>]*)?(?:\/>|>([\s\S]*?)<\/si>)/g,
-    ),
-  ].map((m) => textRuns(m[1] || ''))
-  const sheet = read(firstSheetPath(read))
-  if (!sheet) throw new Error('В XLSX нет листа')
+function parseSheet(xml, shared) {
   const rows = []
-  for (const rowMatch of sheet.matchAll(
-    /<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g,
+  for (const rowMatch of xml.matchAll(
+    /<(?:\w+:)?row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?row>)/g,
   )) {
     const number = Number(attr(rowMatch[1], 'r')) || rows.length + 1
     const cells = []
     for (const cell of (rowMatch[2] || '').matchAll(
-      /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g,
+      /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g,
     )) {
       const [, attrs, inner = ''] = cell
       const type = attr(attrs, 't')
-      const raw = /<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(inner)?.[1]
+      const raw = /<(?:\w+:)?v(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?v>/.exec(inner)?.[1]
       let value = ''
       if (type === 'inlineStr') value = textRuns(inner)
       else if (raw == null) value = ''
@@ -137,4 +139,28 @@ export function readXlsx(buffer) {
     rows.push({ number, cells: Array.from(cells, (v) => v ?? '') })
   }
   return rows
+}
+
+function sharedStrings(read) {
+  return [
+    ...(read('xl/sharedStrings.xml') || '').matchAll(
+      /<(?:\w+:)?si(?:\s[^>]*)?(?:\/>|>([\s\S]*?)<\/(?:\w+:)?si>)/g,
+    ),
+  ].map((m) => textRuns(m[1] || ''))
+}
+
+/** All worksheets: [{ name, rows }]. */
+export function readXlsxSheets(buffer) {
+  const read = unzip(buffer)
+  const shared = sharedStrings(read)
+  return sheetPaths(read).map(({ name, path }) => {
+    const xml = read(path)
+    if (!xml) throw new Error(`В XLSX нет листа «${name}»`)
+    return { name, rows: parseSheet(xml, shared) }
+  })
+}
+
+/** First worksheet as rows. */
+export function readXlsx(buffer) {
+  return readXlsxSheets(buffer)[0].rows
 }
