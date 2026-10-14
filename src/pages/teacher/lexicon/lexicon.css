@@ -444,18 +444,18 @@
     max-height: 50vh;
   }
 }
-/* Desktop: the three columns fill the window; lists stretch to the column
-   height and scroll inside it, the column itself scrolls only as a fallback. */
+/* Desktop: the row is as tall as the middle column (all subtopics shown),
+   at least the window height; side lists stretch to it and scroll inside. */
 @media (min-width: 1101px) {
   .lexicon-topics {
     grid-template-columns: 260px minmax(0, 1fr) 340px;
-    height: max(640px, calc(100dvh - var(--topics-top, 260px) - 24px));
+    min-height: max(640px, calc(100dvh - var(--topics-top, 260px) - 24px));
   }
   .lexicon-topics > *,
   .lexicon-col-stack > * {
     min-height: 0;
   }
-  .lexicon-topics > .lexicon-panel,
+  .lexicon-topics > .lexicon-panel:not(.lexicon-topic-main),
   .lexicon-col-stack > .lexicon-panel {
     overflow-x: hidden;
     overflow-y: auto;
@@ -477,7 +477,7 @@
     flex: none;
   }
   .lexicon-sub-card {
-    flex: 1 1 0;
+    flex: 2 1 0;
   }
   .lexicon-sub-card .lexicon-sub-words {
     flex: 1 1 0;
@@ -486,8 +486,7 @@
     flex-direction: column;
   }
   .lexicon-col-stack > .lexicon-assign {
-    flex: 0 1 auto;
-    max-height: 40%;
+    flex: 1 1 0;
   }
   .lexicon-topics .lexicon-assign {
     gap: 10px;
@@ -500,12 +499,14 @@
     display: none;
   }
   .lexicon-topics .lexicon-checks {
-    flex: 0 1 auto;
-    min-height: 48px;
+    flex: 1 1 0;
+    min-height: 80px;
     max-height: none;
     overflow-y: auto;
-  }
-  .lexicon-topics > .lexicon-assign .lexicon-checks {
-    flex: 1 1 0;
+    align-content: start;
+    padding: 10px 12px;
+    border: 1px solid #5b6eac1f;
+    border-radius: 12px;
+    background: #ffffff8c;
   }
 }

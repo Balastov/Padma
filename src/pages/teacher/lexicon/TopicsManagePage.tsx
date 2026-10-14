@@ -217,7 +217,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
           </ul>
         </section>
 
-        <section className="glass-panel lexicon-panel">
+        <section className="glass-panel lexicon-panel lexicon-topic-main">
           {topic ? (
             <>
               <StubMedia label={topic.title} tall />
@@ -232,7 +232,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
                   прогресс: заглушка
                 </span>
               </p>
-              <ul className="lexicon-list lexicon-fill">
+              <ul className="lexicon-list">
                 {(detail?.subtopics || []).map((s) => (
                   <li key={s.id}>
                     <button
