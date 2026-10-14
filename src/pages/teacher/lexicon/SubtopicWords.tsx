@@ -64,7 +64,7 @@ export default function SubtopicWords({
         </p>
       )}
       {!!terms.length && (
-        <ul className="lexicon-sub-words__list">
+        <ul className="lexicon-sub-words__list lexicon-fill">
           {terms.map((t) => (
             <li key={t.id}>
               <span>

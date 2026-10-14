@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronRight, Plus } from 'lucide-react'
 import { api } from '../../../api'
 import type { User } from '../../../api'
@@ -42,6 +42,21 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
   const [subTitle, setSubTitle] = useState('')
   const [error, setError] = useState('')
   const [version, setVersion] = useState(0)
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  // Desktop: the three columns fill the window below the page header.
+  useLayoutEffect(() => {
+    const grid = gridRef.current
+    if (!grid) return
+    const measure = () =>
+      grid.style.setProperty(
+        '--topics-top',
+        `${Math.round(grid.getBoundingClientRect().top + window.scrollY)}px`,
+      )
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [error])
 
   const load = useCallback(async () => {
     try {
@@ -121,7 +136,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
           {error}
         </p>
       )}
-      <div className="lexicon-grid-3">
+      <div className="lexicon-grid-3 lexicon-topics" ref={gridRef}>
         <section className="glass-panel lexicon-panel">
           <div className="lexicon-toolbar">
             <input
@@ -155,7 +170,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
             </button>
           </div>
           <h2>Основные темы</h2>
-          <ul className="lexicon-list lexicon-topic-list">
+          <ul className="lexicon-list lexicon-topic-list lexicon-fill">
             {main.map((t) => (
               <li key={t.id}>
                 <button
@@ -177,8 +192,8 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
               </li>
             ))}
           </ul>
-          <h2>Лексические группы</h2>
-          <ul className="lexicon-list lexicon-topic-list">
+          {!!lexical.length && <h2>Лексические группы</h2>}
+          <ul className="lexicon-list lexicon-topic-list lexicon-groups">
             {lexical.map((t) => (
               <li key={t.id}>
                 <button
@@ -217,7 +232,7 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
                   прогресс: заглушка
                 </span>
               </p>
-              <ul className="lexicon-list">
+              <ul className="lexicon-list lexicon-fill">
                 {(detail?.subtopics || []).map((s) => (
                   <li key={s.id}>
                     <button
@@ -264,9 +279,8 @@ export default function TopicsManagePage({ students }: { students: User[] }) {
         </section>
 
         {sub ? (
-          <div style={{ display: 'grid', gap: 16 }}>
-            <section className="glass-panel lexicon-panel">
-              <StubMedia label={sub.title} />
+          <div className="lexicon-col-stack">
+            <section className="glass-panel lexicon-panel lexicon-sub-card">
               <h3>{sub.title}</h3>
               {sub.description && <p>{sub.description}</p>}
               <SubtopicWords

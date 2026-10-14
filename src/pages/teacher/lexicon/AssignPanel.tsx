@@ -86,8 +86,10 @@ export default function AssignPanel({
   }
 
   return (
-    <aside className="glass-panel lexicon-panel">
-      <h3>Кому доступно</h3>
+    <aside className="glass-panel lexicon-panel lexicon-assign">
+      <h3 title="Ученики увидят выбранный набор в своём словаре и тренажёре.">
+        Кому доступно
+      </h3>
       <div className="lexicon-subtabs">
         <button
           type="button"
@@ -183,7 +185,7 @@ export default function AssignPanel({
         {busy ? 'Назначаем…' : 'Назначить'}
       </button>
       {msg && <p className="caption">{msg}</p>}
-      <p className="caption">
+      <p className="caption lexicon-assign__hint">
         Ученики увидят выбранный набор в своём словаре и тренажёре.
       </p>
     </aside>
