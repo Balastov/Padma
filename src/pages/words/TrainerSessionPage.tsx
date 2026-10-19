@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -13,7 +13,6 @@ import {
   LogOut,
   Play,
   RotateCcw,
-  SkipForward,
   Target,
   XCircle,
 } from 'lucide-react'
@@ -24,6 +23,7 @@ import {
   registerWords,
 } from '../../student/catalogStore'
 import { EXERCISE_META } from '../../student/types'
+import type { VocabWord } from '../../student/types'
 import {
   createSession,
   deleteSession,
@@ -42,22 +42,26 @@ import {
   TrainingCardsFormat,
   TrueFalseFormat,
 } from './exercises'
+import { FindWordFormat, MatchPairsFormat, MemoryFormat } from './games'
+import type { GameResult } from './games'
 import './TrainerPage.css'
-
-function shuffle<T>(arr: T[]) {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
 
 export default function TrainerSessionPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const [session, setSession] = useState<TrainerSession | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  // Words in play for multi-word formats (pairs, memory).
+  const [activeIds, setActiveIds] = useState<string[]>([])
+  const [sideSlot, setSideSlot] = useState<HTMLDivElement | null>(null)
+  const latest = useRef<{ session: TrainerSession | null; elapsed: number }>({
+    session: null,
+    elapsed: 0,
+  })
+  // Answers arrive from clicks and timers, after the latest render.
+  useLayoutEffect(() => {
+    latest.current = { session, elapsed }
+  })
 
   useEffect(() => {
     void loadCatalog().then(() => {
@@ -79,21 +83,28 @@ export default function TrainerSessionPage() {
     () => getWordsByIds(session?.wordIds || []),
     [session?.wordIds],
   )
-  const current = words[session?.currentIndex || 0]
+  const current = words[session?.answers.length || 0]
 
   function persist(next: TrainerSession) {
     upsertSession(next)
     setSession(next)
   }
 
-  function answer(correct: boolean, ms = 0, skipped = false) {
-    if (!session || !current) return
-    bumpWordFromAnswer(current.id, correct)
+  // One or several answers; games may answer out of order and later.
+  function record(results: GameResult[]) {
+    const { session, elapsed } = latest.current
+    if (!session || !results.length) return
+    for (const r of results) bumpWordFromAnswer(r.wordId, r.correct)
     const answers = [
       ...session.answers,
-      { wordId: current.id, correct, ms, ...(skipped ? { skipped } : {}) },
+      ...results.map((r) => ({
+        wordId: r.wordId,
+        correct: r.correct,
+        ms: 0,
+        ...(r.skipped ? { skipped: true } : {}),
+      })),
     ]
-    const nextIndex = session.currentIndex + 1
+    const nextIndex = answers.length
     if (nextIndex >= session.wordIds.length) {
       const done = {
         ...session,
@@ -115,6 +126,9 @@ export default function TrainerSessionPage() {
     })
   }
 
+  const answer = (correct: boolean, skipped = false) =>
+    current && record([{ wordId: current.id, correct, skipped }])
+
   // Leaving keeps the attempt only for homework tied to a course lesson;
   // otherwise the timer and answers start over next time.
   function exit() {
@@ -134,9 +148,10 @@ export default function TrainerSessionPage() {
   }
   if (!current) return <p className="empty-state">Нет слов</p>
 
-  const pct = Math.round(
-    (session.currentIndex / Math.max(session.wordIds.length, 1)) * 100,
-  )
+  const answered = session.answers.length
+  const pct = Math.round((answered / Math.max(session.wordIds.length, 1)) * 100)
+  const group = GROUP_FORMATS.has(session.exerciseType)
+  const resultOf = new Map(session.answers.map((a) => [a.wordId, a]))
   // Until answered, the list must not give the answer away.
   const hideWord = ANSWER_IS_WORD.has(session.exerciseType)
   const hideTranslation = ANSWER_IS_TRANSLATION.has(session.exerciseType)
@@ -158,7 +173,7 @@ export default function TrainerSessionPage() {
       <section className="glass-panel trainer-board">
         <div className="trainer-progress">
           <strong>
-            {Math.min(session.currentIndex + 1, session.wordIds.length)} из{' '}
+            {group ? answered : Math.min(answered + 1, session.wordIds.length)} из{' '}
             {session.wordIds.length}
           </strong>
           <div className="trainer-progress__bar">
@@ -170,50 +185,31 @@ export default function TrainerSessionPage() {
           </span>
         </div>
         <Exercise
+          sessionId={session.id}
           type={session.exerciseType}
           wordId={current.id}
-          poolIds={session.wordIds}
-          onAnswer={answer}
-          onSkip={() => answer(false, 0, true)}
-          onFinishGame={() => {
-            if (!session) return
-            const answers = session.wordIds.map((id) => ({
-              wordId: id,
-              correct: true,
-              ms: 0,
-            }))
-            const done = {
-              ...session,
-              answers,
-              currentIndex: session.wordIds.length,
-              status: 'done' as const,
-              elapsedSec: elapsed,
-            }
-            persist(done)
-            navigate(`/words/trainer/result/${session.id}`)
-          }}
+          words={words}
+          onAnswer={(correct) => answer(correct)}
+          onSkip={() => answer(false, true)}
+          onAnswers={record}
+          onActive={setActiveIds}
+          onPenalty={(sec) => setElapsed((e) => e + sec)}
+          sideSlot={sideSlot}
         />
         <div className="trainer-session__actions">
-          {LEGACY_FORMATS.has(session.exerciseType) && (
-            <button
-              type="button"
-              className="button-secondary button-small"
-              onClick={() => answer(false, 0, true)}
-            >
-              <SkipForward size={16} /> Пропустить
-            </button>
-          )}
           <button type="button" className="text-button" onClick={exit}>
             <LogOut size={16} /> Выйти из тренажёра
           </button>
         </div>
       </section>
       <aside className="glass-panel session-words">
+        <div ref={setSideSlot} className="session-side-slot" />
         <h2>Слова в этом занятии</h2>
         <ul>
-          {words.map((w, i) => {
-            const result = session.answers[i]
-            const cur = i === session.currentIndex
+          {words.map((w) => {
+            const result = resultOf.get(w.id)
+            const cur =
+              !result && (group ? activeIds.includes(w.id) : w.id === current.id)
             const state = result
               ? result.correct
                 ? 'is-ok'
@@ -261,27 +257,37 @@ const ANSWER_IS_TRANSLATION = new Set([
   'choose-translation',
   'choose-translation-audio',
   'true-false',
+  'match-pairs',
+  'memory',
 ])
-// Formats rebuilt in stage 3 handle skipping themselves.
-const LEGACY_FORMATS = new Set(['match-pairs', 'memory', 'find-word'])
+// Formats that play several words at once.
+const GROUP_FORMATS = new Set(['match-pairs', 'memory'])
 
 function Exercise({
+  sessionId,
   type,
   wordId,
-  poolIds,
+  words,
   onAnswer,
   onSkip,
-  onFinishGame,
+  onAnswers,
+  onActive,
+  onPenalty,
+  sideSlot,
 }: {
+  sessionId: string
   type: TrainerSession['exerciseType']
   wordId: string
-  poolIds: string[]
+  words: VocabWord[]
   onAnswer: (correct: boolean) => void
   onSkip: () => void
-  onFinishGame: () => void
+  onAnswers: (results: GameResult[]) => void
+  onActive: (ids: string[]) => void
+  onPenalty: (seconds: number) => void
+  sideSlot: HTMLElement | null
 }) {
   const word = getWord(wordId)!
-  const pool = getWordsByIds(poolIds.filter((id) => id !== wordId))
+  const pool = words.filter((w) => w.id !== wordId)
   if (type === 'cards')
     return <CardsFormat key={wordId} word={word} onAnswer={onAnswer} />
   if (type === 'training-cards')
@@ -314,215 +320,32 @@ function Exercise({
       <TrueFalseFormat key={wordId} word={word} pool={pool} onAnswer={onAnswer} onSkip={onSkip} />
     )
   if (type === 'match-pairs')
-    return <MatchPairsEx poolIds={poolIds} onFinish={onFinishGame} />
+    return (
+      <MatchPairsFormat
+        key={sessionId}
+        words={words}
+        onAnswers={onAnswers}
+        onActive={onActive}
+      />
+    )
   if (type === 'memory')
-    return <MemoryEx poolIds={poolIds} onFinish={onFinishGame} />
-  return <FindWordEx wordId={wordId} onAnswer={onAnswer} />
-}
-
-function MatchPairsEx({
-  poolIds,
-  onFinish,
-}: {
-  poolIds: string[]
-  onFinish: () => void
-}) {
-  const words = useMemo(
-    () => shuffle(getWordsByIds(poolIds)).slice(0, 4),
-    [poolIds],
-  )
-  const left = words
-  const right = useMemo(
-    () => shuffle(words.map((w) => ({ id: w.id, t: w.translation }))),
-    [words],
-  )
-  const [pickL, setPickL] = useState<string | null>(null)
-  const [done, setDone] = useState<string[]>([])
-  function pickR(id: string) {
-    if (!pickL) return
-    if (pickL === id) {
-      const next = [...done, id]
-      setDone(next)
-      setPickL(null)
-      if (next.length >= left.length) onFinish()
-    } else {
-      setPickL(null)
-    }
-  }
-  return (
-    <div>
-      <h2>Собери пару</h2>
-      <div className="pair-board">
-        <div>
-          {left.map((w) => (
-            <button
-              key={w.id}
-              type="button"
-              className={
-                done.includes(w.id)
-                  ? 'is-done'
-                  : pickL === w.id
-                    ? 'is-picked'
-                    : ''
-              }
-              disabled={done.includes(w.id)}
-              onClick={() => setPickL(w.id)}
-            >
-              {w.word}
-            </button>
-          ))}
-        </div>
-        <div>
-          {right.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              className={done.includes(r.id) ? 'is-done' : ''}
-              disabled={done.includes(r.id)}
-              onClick={() => pickR(r.id)}
-            >
-              {r.t}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MemoryEx({
-  poolIds,
-  onFinish,
-}: {
-  poolIds: string[]
-  onFinish: () => void
-}) {
-  const base = useMemo(
-    () => shuffle(getWordsByIds(poolIds)).slice(0, 4),
-    [poolIds],
-  )
-  const cards = useMemo(
-    () =>
-      shuffle([
-        ...base.map((w) => ({ key: w.id + '-en', pair: w.id, label: w.word })),
-        ...base.map((w) => ({
-          key: w.id + '-ru',
-          pair: w.id,
-          label: w.translation,
-        })),
-      ]),
-    [base],
-  )
-  const [open, setOpen] = useState<string[]>([])
-  const [matched, setMatched] = useState<string[]>([])
-  function flip(key: string, pair: string) {
-    if (matched.includes(pair) || open.includes(key)) return
-    const next = [...open, key]
-    if (next.length < 2) {
-      setOpen(next)
-      return
-    }
-    const [a, b] = next
-    const ca = cards.find((c) => c.key === a)!
-    const cb = cards.find((c) => c.key === b)!
-    if (ca.pair === cb.pair) {
-      const m = [...matched, ca.pair]
-      setMatched(m)
-      setOpen([])
-      if (m.length >= base.length) onFinish()
-    } else {
-      setOpen(next)
-      setTimeout(() => setOpen([]), 600)
-    }
-  }
-  return (
-    <div>
-      <h2>Мемория</h2>
-      <p className="caption">
-        Открыто пар: {matched.length} из {base.length}
-      </p>
-      <div className="memory-grid">
-        {cards.map((c) => {
-          const shown = open.includes(c.key) || matched.includes(c.pair)
-          return (
-            <button
-              key={c.key}
-              type="button"
-              className={shown ? 'is-open' : ''}
-              onClick={() => flip(c.key, c.pair)}
-            >
-              {shown ? c.label : '✦'}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function FindWordEx({
-  wordId,
-  onAnswer,
-}: {
-  wordId: string
-  onAnswer: (c: boolean) => void
-}) {
-  const w = getWord(wordId)!
-  const target = w.word.replace(/\s/g, '').toUpperCase()
-  const size = Math.max(8, target.length + 2)
-  const grid = useMemo(() => {
-    const g = Array.from({ length: size }, () =>
-      Array.from({ length: size }, () =>
-        String.fromCharCode(65 + Math.floor(Math.random() * 26)),
-      ),
+    return (
+      <MemoryFormat
+        key={sessionId}
+        words={words}
+        onAnswers={onAnswers}
+        onActive={onActive}
+        sideSlot={sideSlot}
+      />
     )
-    const row = 2
-    const col = 1
-    for (let i = 0; i < target.length; i++) g[row][col + i] = target[i]
-    return g
-  }, [target, size])
-  const [sel, setSel] = useState<string[]>([])
-  function toggle(r: number, c: number) {
-    const key = `${r}-${c}`
-    setSel((prev) =>
-      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
-    )
-  }
-  function check() {
-    const letters = sel
-      .map((k) => {
-        const [r, c] = k.split('-').map(Number)
-        return grid[r][c]
-      })
-      .join('')
-    onAnswer(letters === target)
-  }
   return (
-    <div>
-      <h2>Найди слово</h2>
-      <p>
-        Подсказка: <strong>{w.translation}</strong>
-      </p>
-      <div className="find-grid">
-        {grid.map((row, ri) => (
-          <div key={ri} className="find-grid__row">
-            {row.map((ch, ci) => (
-              <button
-                key={ci}
-                type="button"
-                className={`find-grid__cell${sel.includes(`${ri}-${ci}`) ? ' is-on' : ''}`}
-                onClick={() => toggle(ri, ci)}
-              >
-                {ch}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-      <button type="button" className="button-primary" onClick={check}>
-        Проверить
-      </button>
-    </div>
+    <FindWordFormat
+      key={wordId}
+      word={word}
+      onAnswer={onAnswer}
+      onSkip={onSkip}
+      onPenalty={onPenalty}
+    />
   )
 }
 

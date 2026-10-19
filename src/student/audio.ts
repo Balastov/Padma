@@ -31,3 +31,12 @@ export function playExampleAudio(text: string) {
   u.lang = 'en-GB'
   window.speechSynthesis.speak(u)
 }
+
+/** Any text in the given language (Memory cards are English or Russian). */
+export function speakText(text: string, lang: 'en-GB' | 'ru-RU') {
+  if (!('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = lang
+  window.speechSynthesis.speak(u)
+}

@@ -14,7 +14,17 @@ const TEMPLATE_SENTENCE =
 // Import note for teachers, not a description for students.
 const IMPORT_NOTE = /^Ранее: /
 
+// Formats with a personal best time and a place among students.
+const TIMED_FORMATS = new Set(['memory'])
+
 export function initLexiconStudent(db) {
+  db.exec(`CREATE TABLE IF NOT EXISTS trainer_records (
+    userId TEXT NOT NULL REFERENCES users(id),
+    format TEXT NOT NULL,
+    bestSec INTEGER NOT NULL,
+    updated TEXT NOT NULL,
+    PRIMARY KEY (userId, format)
+  )`)
   db.exec(`CREATE TABLE IF NOT EXISTS lexicon_progress (
     userId TEXT NOT NULL REFERENCES users(id),
     termId TEXT NOT NULL,
@@ -290,6 +300,45 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
         }
       })
     send(200, { ...hw, words })
+    return true
+  }
+
+  // Best time and place among students; names of others are never sent.
+  const recordMatch = /^\/api\/lexicon\/me\/records\/([a-z-]+)$/.exec(path)
+  if (recordMatch && ['GET', 'POST'].includes(req.method)) {
+    const format = recordMatch[1]
+    if (!TIMED_FORMATS.has(format)) fail(404, 'Не найдено')
+    let improved = false
+    if (req.method === 'POST') {
+      const data = await body(req, 1000)
+      const seconds = data.seconds
+      if (!Number.isInteger(seconds) || seconds < 1 || seconds > 86400)
+        fail(400, 'Некорректное время')
+      const current = db
+        .prepare('SELECT bestSec FROM trainer_records WHERE userId=? AND format=?')
+        .get(user.id, format)
+      if (!current || seconds < current.bestSec) {
+        improved = true
+        db.prepare(
+          `INSERT INTO trainer_records (userId, format, bestSec, updated) VALUES (?,?,?,?)
+           ON CONFLICT(userId, format) DO UPDATE SET bestSec=excluded.bestSec, updated=excluded.updated`,
+        ).run(user.id, format, seconds, new Date().toISOString())
+      }
+    }
+    const students = db
+      .prepare(
+        `SELECT r.userId, r.bestSec FROM trainer_records r
+         JOIN users u ON u.id = r.userId
+         WHERE r.format = ? AND u.archived = 0 AND u.roles LIKE '%"student"%'`,
+      )
+      .all(format)
+    const mine = students.find((r) => r.userId === user.id)
+    send(200, {
+      best: mine?.bestSec ?? null,
+      improved,
+      rank: mine ? 1 + students.filter((r) => r.bestSec < mine.bestSec).length : null,
+      total: students.length,
+    })
     return true
   }
 

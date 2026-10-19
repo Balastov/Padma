@@ -144,3 +144,14 @@ export function saveLevel(bookId: string) {
     /* per-device convenience only */
   }
 }
+
+export type TrainerRecord = {
+  best: number | null
+  improved: boolean
+  rank: number | null
+  total: number
+}
+export const fetchRecord = (format: string) =>
+  api<TrainerRecord>(`/lexicon/me/records/${format}`)
+export const saveRecord = (format: string, seconds: number) =>
+  api<TrainerRecord>(`/lexicon/me/records/${format}`, 'POST', { seconds })

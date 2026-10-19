@@ -252,6 +252,26 @@ test('student dictionary: topics, levels, subtopic words, progress', async () =>
     )
     assert.deepEqual((await request('/lexicon/me/homework', 'GET', undefined, boris)).body, [])
 
+    // Memory best time: personal best, place among students only.
+    assert.deepEqual(
+      (await request('/lexicon/me/records/memory', 'GET', undefined, anna)).body,
+      { best: null, improved: false, rank: null, total: 0 },
+    )
+    assert.equal((await request('/lexicon/me/records/cards', 'GET', undefined, anna)).status, 404)
+    assert.equal(
+      (await request('/lexicon/me/records/memory', 'POST', { seconds: 0 }, anna)).status,
+      400,
+    )
+    const first = await request('/lexicon/me/records/memory', 'POST', { seconds: 50 }, anna)
+    assert.deepEqual(first.body, { best: 50, improved: true, rank: 1, total: 1 })
+    const slower = await request('/lexicon/me/records/memory', 'POST', { seconds: 70 }, anna)
+    assert.deepEqual(slower.body, { best: 50, improved: false, rank: 1, total: 1 })
+    await request('/lexicon/me/records/memory', 'POST', { seconds: 40 }, boris)
+    await request('/lexicon/me/records/memory', 'POST', { seconds: 10 }, teacher)
+    const annaRank = await request('/lexicon/me/records/memory', 'GET', undefined, anna)
+    assert.deepEqual(annaRank.body, { best: 50, improved: false, rank: 2, total: 2 })
+    assert.equal(JSON.stringify(annaRank.body).includes('boris'), false)
+
     // Search results link occurrences to their unit subtopic.
     const found = await request('/lexicon/search?q=aunt', 'GET', undefined, anna)
     assert.equal(found.body.items[0].units[0].subtopicId, family.id)
