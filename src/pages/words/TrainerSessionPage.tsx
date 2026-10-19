@@ -35,6 +35,13 @@ import {
 } from '../../student/sessionStore'
 import { bumpWordFromAnswer } from '../../student/progressStore'
 import { WordAudioButton } from './WordAudioButton'
+import {
+  AssembleFormat,
+  CardsFormat,
+  ChooseFormat,
+  TrainingCardsFormat,
+  TrueFalseFormat,
+} from './exercises'
 import './TrainerPage.css'
 
 function shuffle<T>(arr: T[]) {
@@ -130,6 +137,9 @@ export default function TrainerSessionPage() {
   const pct = Math.round(
     (session.currentIndex / Math.max(session.wordIds.length, 1)) * 100,
   )
+  // Until answered, the list must not give the answer away.
+  const hideWord = ANSWER_IS_WORD.has(session.exerciseType)
+  const hideTranslation = ANSWER_IS_TRANSLATION.has(session.exerciseType)
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0')
   const ss = String(elapsed % 60).padStart(2, '0')
 
@@ -164,6 +174,7 @@ export default function TrainerSessionPage() {
           wordId={current.id}
           poolIds={session.wordIds}
           onAnswer={answer}
+          onSkip={() => answer(false, 0, true)}
           onFinishGame={() => {
             if (!session) return
             const answers = session.wordIds.map((id) => ({
@@ -183,13 +194,15 @@ export default function TrainerSessionPage() {
           }}
         />
         <div className="trainer-session__actions">
-          <button
-            type="button"
-            className="button-secondary button-small"
-            onClick={() => answer(false, 0, true)}
-          >
-            <SkipForward size={16} /> Пропустить
-          </button>
+          {LEGACY_FORMATS.has(session.exerciseType) && (
+            <button
+              type="button"
+              className="button-secondary button-small"
+              onClick={() => answer(false, 0, true)}
+            >
+              <SkipForward size={16} /> Пропустить
+            </button>
+          )}
           <button type="button" className="text-button" onClick={exit}>
             <LogOut size={16} /> Выйти из тренажёра
           </button>
@@ -225,8 +238,14 @@ export default function TrainerSessionPage() {
                   <Circle size={20} aria-label="В очереди" />
                 )}
                 <span>
-                  <strong>{w.word}</strong>
-                  <small>{cur ? '…' : w.translation}</small>
+                  <strong>{!result && hideWord ? '•••' : w.word}</strong>
+                  <small>
+                    {result
+                      ? w.translation
+                      : cur || hideTranslation
+                        ? '…'
+                        : w.translation}
+                  </small>
                 </span>
               </li>
             )
@@ -237,276 +256,68 @@ export default function TrainerSessionPage() {
   )
 }
 
+const ANSWER_IS_WORD = new Set(['assemble', 'assemble-audio', 'find-word'])
+const ANSWER_IS_TRANSLATION = new Set([
+  'choose-translation',
+  'choose-translation-audio',
+  'true-false',
+])
+// Formats rebuilt in stage 3 handle skipping themselves.
+const LEGACY_FORMATS = new Set(['match-pairs', 'memory', 'find-word'])
+
 function Exercise({
   type,
   wordId,
   poolIds,
   onAnswer,
+  onSkip,
   onFinishGame,
 }: {
   type: TrainerSession['exerciseType']
   wordId: string
   poolIds: string[]
   onAnswer: (correct: boolean) => void
+  onSkip: () => void
   onFinishGame: () => void
 }) {
   const word = getWord(wordId)!
-  if (type === 'cards') return <CardsEx wordId={wordId} onAnswer={onAnswer} />
+  const pool = getWordsByIds(poolIds.filter((id) => id !== wordId))
+  if (type === 'cards')
+    return <CardsFormat key={wordId} word={word} onAnswer={onAnswer} />
   if (type === 'training-cards')
-    return <TrainingCardsEx wordId={wordId} onAnswer={onAnswer} />
+    return (
+      <TrainingCardsFormat key={wordId} word={word} onAnswer={onAnswer} onSkip={onSkip} />
+    )
   if (type === 'assemble' || type === 'assemble-audio')
     return (
-      <AssembleEx
-        wordId={wordId}
+      <AssembleFormat
+        key={wordId}
+        word={word}
         audioOnly={type === 'assemble-audio'}
         onAnswer={onAnswer}
+        onSkip={onSkip}
       />
     )
   if (type === 'choose-translation' || type === 'choose-translation-audio')
     return (
-      <ChooseEx
-        wordId={wordId}
-        poolIds={poolIds}
+      <ChooseFormat
+        key={wordId}
+        word={word}
+        pool={pool}
         audioOnly={type === 'choose-translation-audio'}
         onAnswer={onAnswer}
+        onSkip={onSkip}
       />
     )
   if (type === 'true-false')
-    return <TrueFalseEx wordId={wordId} poolIds={poolIds} onAnswer={onAnswer} />
+    return (
+      <TrueFalseFormat key={wordId} word={word} pool={pool} onAnswer={onAnswer} onSkip={onSkip} />
+    )
   if (type === 'match-pairs')
     return <MatchPairsEx poolIds={poolIds} onFinish={onFinishGame} />
   if (type === 'memory')
     return <MemoryEx poolIds={poolIds} onFinish={onFinishGame} />
-  if (type === 'find-word')
-    return <FindWordEx wordId={wordId} onAnswer={onAnswer} />
-  return (
-    <p>
-      {word.word} <WordAudioButton word={word.word} />
-    </p>
-  )
-}
-
-function CardsEx({
-  wordId,
-  onAnswer,
-}: {
-  wordId: string
-  onAnswer: (c: boolean) => void
-}) {
-  const w = getWord(wordId)!
-  const [show, setShow] = useState(false)
-  return (
-    <div>
-      <h2>{w.word}</h2>
-      <p className="ipa">{w.transcription}</p>
-      <WordAudioButton word={w.word} />
-      <p className="secondary">{w.exampleEn}</p>
-      {show ? (
-        <>
-          <p>{w.translation}</p>
-          <button
-            type="button"
-            className="button-primary"
-            onClick={() => onAnswer(true)}
-          >
-            Следующее
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          className="button-primary"
-          onClick={() => setShow(true)}
-        >
-          Показать перевод
-        </button>
-      )}
-    </div>
-  )
-}
-
-function TrainingCardsEx({
-  wordId,
-  onAnswer,
-}: {
-  wordId: string
-  onAnswer: (c: boolean) => void
-}) {
-  const w = getWord(wordId)!
-  const [show, setShow] = useState(false)
-  return (
-    <div>
-      <p className="caption">Посмотрите на слово</p>
-      <h2>{w.word}</h2>
-      <p className="ipa">{w.transcription}</p>
-      <WordAudioButton word={w.word} />
-      {!show ? (
-        <button
-          type="button"
-          className="button-secondary"
-          onClick={() => setShow(true)}
-        >
-          Показать перевод
-        </button>
-      ) : (
-        <>
-          <p>{w.translation}</p>
-          <div className="rate-row">
-            <button type="button" className="rate-easy" onClick={() => onAnswer(true)}>
-              Легко
-            </button>
-            <button type="button" className="rate-more" onClick={() => onAnswer(true)}>
-              Надо ещё
-            </button>
-            <button type="button" className="rate-later" onClick={() => onAnswer(false)}>
-              Повторить позже
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function AssembleEx({
-  wordId,
-  audioOnly,
-  onAnswer,
-}: {
-  wordId: string
-  audioOnly: boolean
-  onAnswer: (c: boolean) => void
-}) {
-  const w = getWord(wordId)!
-  const letters = useMemo(
-    () => shuffle(w.word.replace(/\s/g, '').toLowerCase().split('')),
-    [w.word],
-  )
-  const [picked, setPicked] = useState<number[]>([])
-  const built = picked.map((i) => letters[i]).join('')
-  const target = w.word.replace(/\s/g, '').toLowerCase()
-  return (
-    <div>
-      <h2>{audioOnly ? 'Соберите слово по аудио' : w.translation}</h2>
-      {audioOnly ? (
-        <WordAudioButton word={w.word} />
-      ) : (
-        <p className="caption">Соберите английское слово</p>
-      )}
-      <p style={{ fontSize: '1.4rem', letterSpacing: '0.08em' }}>
-        {built || '…'}
-      </p>
-      <div className="letter-bank">
-        {letters.map((ch, i) => (
-          <button
-            key={`${ch}-${i}`}
-            type="button"
-            disabled={picked.includes(i)}
-            onClick={() => setPicked([...picked, i])}
-          >
-            {ch}
-          </button>
-        ))}
-      </div>
-      <div className="trainer-result__actions">
-        <button type="button" className="button-secondary" onClick={() => setPicked([])}>
-          Сбросить
-        </button>
-        <button
-          type="button"
-          className="button-primary"
-          onClick={() => onAnswer(built === target)}
-        >
-          Проверить
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function ChooseEx({
-  wordId,
-  poolIds,
-  audioOnly,
-  onAnswer,
-}: {
-  wordId: string
-  poolIds: string[]
-  audioOnly: boolean
-  onAnswer: (c: boolean) => void
-}) {
-  const w = getWord(wordId)!
-  const options = useMemo(() => {
-    const others = shuffle(
-      getWordsByIds(poolIds.filter((id) => id !== wordId)),
-    )
-      .slice(0, 3)
-      .map((x) => x.translation)
-    return shuffle([w.translation, ...others])
-  }, [wordId, poolIds, w.translation])
-  return (
-    <div>
-      <h2>{audioOnly ? 'Выберите перевод' : w.word}</h2>
-      {!audioOnly && <p className="ipa">{w.transcription}</p>}
-      <WordAudioButton word={w.word} />
-      <div className="choice-grid">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => onAnswer(opt === w.translation)}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TrueFalseEx({
-  wordId,
-  poolIds,
-  onAnswer,
-}: {
-  wordId: string
-  poolIds: string[]
-  onAnswer: (c: boolean) => void
-}) {
-  const w = getWord(wordId)!
-  const shown = useMemo(() => {
-    const wrong = (wordId.length + wordId.charCodeAt(2) || 0) % 2 === 0
-    if (!wrong) return { text: w.translation, truth: true }
-    const other =
-      getWordsByIds(poolIds.filter((id) => id !== wordId))[0]?.translation ||
-      'неизвестно'
-    return { text: other, truth: false }
-  }, [wordId, poolIds, w.translation])
-  return (
-    <div>
-      <h2>Верно — неверно</h2>
-      <p className="caption">Верный ли перевод?</p>
-      <h3>{w.word}</h3>
-      <WordAudioButton word={w.word} />
-      <p style={{ fontSize: '1.2rem' }}>{shown.text}</p>
-      <div className="tf-actions">
-        <button
-          type="button"
-          className="tf-yes"
-          onClick={() => onAnswer(shown.truth === true)}
-        >
-          Верно
-        </button>
-        <button
-          type="button"
-          className="tf-no"
-          onClick={() => onAnswer(shown.truth === false)}
-        >
-          Неверно
-        </button>
-      </div>
-    </div>
-  )
+  return <FindWordEx wordId={wordId} onAnswer={onAnswer} />
 }
 
 function MatchPairsEx({

@@ -251,8 +251,9 @@
   .memory-grid {
     grid-template-columns: 1fr;
   }
-  .session-words {
-    order: -1;
+  /* Phones: the task first, the word list below it. */
+  .session-words ul {
+    max-height: 40vh;
   }
 }
 /* Hub: sources of the word set */
