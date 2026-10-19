@@ -404,10 +404,12 @@ function occurrencesOf(db, termIds) {
       `SELECT o.id, o.termId, o.sentence, o.transcription, o.unitId,
               o.translation, o.sentenceTranslation, o.pos, o.category,
               u.number AS unitNumber, u.theme, u.title AS unitTitle,
-              u.bookId, b.title AS bookTitle, b.level
+              u.bookId, b.title AS bookTitle, b.level,
+              s.id AS subtopicId, u.topicId
        FROM lexicon_occurrences o
        JOIN lexicon_units u ON u.id = o.unitId
        JOIN lexicon_books b ON b.id = u.bookId
+       LEFT JOIN vocab_subtopics s ON s.lexiconUnitId = u.id AND s.archived = 0
        WHERE o.termId IN (${termIds.map(() => '?').join(',')})
        ORDER BY b.sortOrder, u.number, o.sortOrder`,
     )
@@ -427,6 +429,8 @@ function occurrencesOf(db, termIds) {
         number: row.unitNumber,
         title: row.unitTitle,
         theme: row.theme,
+        topicId: row.topicId,
+        subtopicId: row.subtopicId,
         bookId: row.bookId,
         bookTitle: row.bookTitle,
         level: row.level,

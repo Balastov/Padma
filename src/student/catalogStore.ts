@@ -124,12 +124,18 @@ export function getCachedCatalog(): VocabCatalog | null {
   return cache
 }
 
+// Words from the textbook dictionary (ids "lx:…"), kept next to the bank.
+const extra = new Map<string, VocabWord>()
+
+export function registerWords(words: VocabWord[]) {
+  for (const w of words) extra.set(w.id, w)
+}
+
 export function getWord(id: string): VocabWord | undefined {
-  return cache?.words.find((w) => w.id === id)
+  return cache?.words.find((w) => w.id === id) || extra.get(id)
 }
 
 export function getWordsByIds(ids: string[]): VocabWord[] {
-  if (!cache) return []
   return ids.map(getWord).filter(Boolean) as VocabWord[]
 }
 

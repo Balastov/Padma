@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Check, Circle } from 'lucide-react'
-import { getWord, getWordsByIds, loadCatalog } from '../../student/catalogStore'
+import {
+  getWord,
+  getWordsByIds,
+  loadCatalog,
+  registerWords,
+} from '../../student/catalogStore'
 import { EXERCISE_META } from '../../student/types'
 import {
   getSession,
@@ -31,6 +36,7 @@ export default function TrainerSessionPage() {
     void loadCatalog().then(() => {
       const s = getSession(sessionId || '')
       if (!s) return
+      if (s.words) registerWords(s.words)
       setSession(s)
       setElapsed(s.elapsedSec)
     })
@@ -673,6 +679,7 @@ export function TrainerResultPage() {
   const { sessionId } = useParams()
   const session = getSession(sessionId || '')
   if (!session) return <p className="empty-state">Результат не найден</p>
+  if (session.words) registerWords(session.words)
   const total = session.answers.length || 1
   const ok = session.answers.filter((a) => a.correct).length
   const pct = Math.round((ok / total) * 100)

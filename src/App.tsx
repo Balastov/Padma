@@ -20,14 +20,13 @@ import LibraryPage, {
 import StudentSettingsPage from './pages/settings/StudentSettingsPage'
 import WordsLayout from './pages/words/WordsLayout'
 import DictionaryHub, {
-  TopicsPage,
-  TopicDetailPage,
-  SubtopicWordsPage,
   LessonsWordsPage,
   CollectionsPage,
   CollectionDetailPage,
   WordDeepLinkPage,
 } from './pages/words/DictionaryPages'
+import LexiconTopicsPage from './pages/words/LexiconTopicsPage'
+import LexiconSubtopicPage from './pages/words/LexiconSubtopicPage'
 import TrainerHubPage from './pages/words/TrainerHubPage'
 import TrainerSessionPage, {
   TrainerResultPage,
@@ -70,14 +69,14 @@ function StudentRoutes({
         <Route path="words" element={<WordsLayout />}>
           <Route index element={<Navigate to="dictionary" replace />} />
           <Route path="dictionary" element={<DictionaryHub />} />
-          <Route path="dictionary/topics" element={<TopicsPage />} />
+          <Route path="dictionary/topics" element={<LexiconTopicsPage />} />
           <Route
             path="dictionary/topics/:topicId"
-            element={<TopicDetailPage />}
+            element={<LexiconTopicsPage />}
           />
           <Route
             path="dictionary/topics/:topicId/:subtopicId"
-            element={<SubtopicWordsPage />}
+            element={<LexiconSubtopicPage />}
           />
           <Route path="dictionary/lessons" element={<LessonsWordsPage />} />
           <Route

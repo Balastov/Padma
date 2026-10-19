@@ -1,4 +1,4 @@
-import type { ExerciseType } from './types'
+import type { ExerciseType, VocabWord } from './types'
 
 export type TrainerSession = {
   id: string
@@ -12,6 +12,8 @@ export type TrainerSession = {
   status: 'active' | 'paused' | 'done'
   answers: { wordId: string; correct: boolean; ms: number }[]
   elapsedSec: number
+  /** Snapshot of textbook dictionary words used by the session. */
+  words?: VocabWord[]
 }
 
 const KEY = 'padma-trainer-sessions'

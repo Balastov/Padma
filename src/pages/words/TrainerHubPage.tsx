@@ -7,7 +7,22 @@ import {
   type ExerciseType,
 } from '../../student/types'
 import { useCatalog } from '../../student/useCatalog'
-import { allowedExercisesFor } from '../../student/catalogStore'
+import {
+  allowedExercisesFor,
+  registerWords,
+} from '../../student/catalogStore'
+import {
+  fetchSubtopic,
+  fetchTopic,
+  fetchTopics,
+  toVocabWord,
+} from '../../student/lexicon'
+import type {
+  StudentSubtopicWords,
+  StudentTopic,
+  StudentTopicDetail,
+} from '../../student/lexicon'
+import type { WordStatus } from '../../student/types'
 import { loadCollections } from '../../student/collectionsStore'
 import {
   createSession,
@@ -15,6 +30,14 @@ import {
 } from '../../student/sessionStore'
 import { revisitWords } from '../../student/progressStore'
 import './TrainerPage.css'
+
+// Words not yet mastered come first in a dictionary training.
+const STATUS_ORDER: Record<WordStatus, number> = {
+  learning: 0,
+  reviewing: 1,
+  new: 2,
+  mastered: 3,
+}
 
 export default function TrainerHubPage() {
   const { catalog, loading, error } = useCatalog()
@@ -28,26 +51,77 @@ export default function TrainerHubPage() {
       | 'collection'
       | 'revisit') || 'all'
   const [source, setSource] = useState(initialSource)
+  // «Темы» use the textbook dictionary.
+  const [topics, setTopics] = useState<StudentTopic[]>([])
   const [topicId, setTopicId] = useState('')
-  const [subId, setSubId] = useState(params.get('id') || '')
+  const [topic, setTopic] = useState<StudentTopicDetail | null>(null)
+  // A subtopic opened from the dictionary decides the topic itself.
+  const requestedSub = initialSource === 'topic' ? params.get('id') || '' : ''
+  const [subId, setSubId] = useState(requestedSub)
+  const [sub, setSub] = useState<StudentSubtopicWords | null>(null)
   const [lessonId, setLessonId] = useState(params.get('id') || '')
   const [collectionId, setCollectionId] = useState(params.get('id') || '')
   const personal = loadCollections()
   const paused = getPausedSession()
 
   useEffect(() => {
-    if (!catalog) return
-    if (!topicId && catalog.topics[0]) setTopicId(catalog.topics[0].id)
-    if (!subId) {
-      const first = catalog.subtopics.find((s) => s.topicId === catalog.topics[0]?.id)
-      if (first) setSubId(first.id)
+    if (source !== 'topic' || topics.length) return
+    let active = true
+    fetchTopics()
+      .then((list) => {
+        if (!active) return
+        setTopics(list)
+        setTopicId((id) => id || (requestedSub ? '' : list[0]?.id || ''))
+      })
+      .catch(() => {})
+    return () => {
+      active = false
     }
+  }, [source, topics.length, requestedSub])
+
+  useEffect(() => {
+    if (!topicId) return
+    let active = true
+    fetchTopic(topicId)
+      .then((detail) => {
+        if (!active) return
+        setTopic(detail)
+        setSubId((id) =>
+          detail.subtopics.some((s) => s.id === id)
+            ? id
+            : detail.subtopics[0]?.id || '',
+        )
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [topicId])
+
+  useEffect(() => {
+    if (!subId) return
+    let active = true
+    fetchSubtopic(subId)
+      .then((data) => {
+        if (!active) return
+        registerWords(data.words.map((w) => toVocabWord(w, data.id)))
+        setSub(data)
+        setTopicId((id) => id || data.topicId)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [subId])
+
+  useEffect(() => {
+    if (!catalog) return
     if (!lessonId && catalog.lessons[0]) setLessonId(catalog.lessons[0].id)
     if (!collectionId) {
       const first = catalog.collections[0] || personal[0]
       if (first) setCollectionId(first.id)
     }
-  }, [catalog, topicId, subId, lessonId, collectionId, personal])
+  }, [catalog, lessonId, collectionId, personal])
 
   const collections = useMemo(() => {
     const assigned = catalog?.collections || []
@@ -60,8 +134,10 @@ export default function TrainerHubPage() {
     if (source === 'revisit') return revisitWords().map((w) => w.id)
     if (source === 'all') return catalog.words.map((w) => w.id)
     if (source === 'topic') {
-      const sub = catalog.subtopics.find((s) => s.id === subId)
-      return sub?.wordIds || []
+      if (sub?.id !== subId) return []
+      return [...sub.words]
+        .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
+        .map((w) => toVocabWord(w, sub.id).id)
     }
     if (source === 'lesson') {
       return catalog.lessons.find((l) => l.id === lessonId)?.wordIds || []
@@ -70,44 +146,31 @@ export default function TrainerHubPage() {
       return collections.find((c) => c.id === collectionId)?.wordIds || []
     }
     return []
-  }, [catalog, source, subId, lessonId, collectionId, collections])
+  }, [catalog, source, sub, subId, lessonId, collectionId, collections])
 
   const sourceLabel = useMemo(() => {
     if (!catalog) return ''
     if (source === 'revisit') return 'Слова для повторения'
     if (source === 'all') return 'Все слова'
     if (source === 'topic')
-      return catalog.subtopics.find((s) => s.id === subId)?.title || 'Тема'
+      return sub?.id === subId ? sub.title : 'Тема'
     if (source === 'lesson')
       return catalog.lessons.find((l) => l.id === lessonId)?.title || 'Урок'
     return collections.find((c) => c.id === collectionId)?.title || 'Коллекция'
-  }, [catalog, source, subId, lessonId, collectionId, collections])
+  }, [catalog, source, sub, subId, lessonId, collectionId, collections])
 
   const unlocked = useMemo(() => {
-    if (source === 'revisit' || source === 'all') return ALLOWED_EXERCISES
-    const type =
-      source === 'topic'
-        ? 'subtopic'
-        : source === 'lesson'
-          ? 'lesson'
-          : source === 'collection'
-            ? 'collection'
-            : 'all'
-    const id =
-      source === 'topic'
-        ? subId
-        : source === 'lesson'
-          ? lessonId
-          : source === 'collection'
-            ? collectionId
-            : ''
-    const list = allowedExercisesFor(type, id)
+    if (source === 'revisit' || source === 'all' || source === 'topic')
+      return ALLOWED_EXERCISES
+    const list = allowedExercisesFor(
+      source,
+      source === 'lesson' ? lessonId : collectionId,
+    )
     if (!list) return ALLOWED_EXERCISES
     return ALLOWED_EXERCISES.filter((t) => list.includes(t))
-  }, [source, subId, lessonId, collectionId])
+  }, [source, lessonId, collectionId])
 
-  const subs =
-    catalog?.subtopics.filter((s) => s.topicId === topicId) || []
+  const subs = topic?.id === topicId ? topic.subtopics : []
   const canStart = wordIds.length > 0 && (source !== 'topic' || Boolean(subId))
 
   function start(type: ExerciseType) {
@@ -125,6 +188,12 @@ export default function TrainerHubPage() {
       sourceLabel,
       exerciseType: type,
       wordIds: wordIds.slice(0, 12),
+      words:
+        source === 'topic' && sub
+          ? sub.words
+              .map((w) => toVocabWord(w, sub.id))
+              .filter((w) => wordIds.slice(0, 12).includes(w.id))
+          : undefined,
     })
     navigate(`/words/trainer/session/${session.id}`)
   }
@@ -187,15 +256,9 @@ export default function TrainerHubPage() {
               <span>Тема</span>
               <select
                 value={topicId}
-                onChange={(e) => {
-                  setTopicId(e.target.value)
-                  const first = catalog?.subtopics.find(
-                    (s) => s.topicId === e.target.value,
-                  )
-                  setSubId(first?.id || '')
-                }}
+                onChange={(e) => setTopicId(e.target.value)}
               >
-                {(catalog?.topics || []).map((t) => (
+                {topics.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
                   </option>
@@ -207,7 +270,7 @@ export default function TrainerHubPage() {
               <select value={subId} onChange={(e) => setSubId(e.target.value)}>
                 {subs.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.title} ({s.wordIds.length})
+                    {s.title} ({s.termCount})
                   </option>
                 ))}
               </select>

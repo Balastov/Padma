@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import { initHomework, homeworkRoute } from './homework.mjs'
 import { initVocab, vocabRoute } from './vocab.mjs'
 import { initLexicon, lexiconRoute } from './lexicon.mjs'
+import { initLexiconStudent, lexiconStudentRoute } from './lexiconStudent.mjs'
 import {
   initAppearance,
   appearancePublicRoute,
@@ -50,6 +51,7 @@ export function createApp({
   initHomework(db)
   initVocab(db)
   initLexicon(db)
+  initLexiconStudent(db)
   initAppearance(db)
   const vapid = loadVapidKeys(dbPath)
   const attempts = new Map()
@@ -211,6 +213,8 @@ export function createApp({
       )
         return
       if (await vocabRoute({ path, req, res, db, user, body, send })) return
+      if (await lexiconStudentRoute({ path, req, db, user, body, send }))
+        return
       if (await lexiconRoute({ path, req, db, user, body, send })) return
       if (await appearanceRoute({ path, req, res, db, user, body, send }))
         return

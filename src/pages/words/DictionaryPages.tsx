@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, Play, Search } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { Link, NavLink, useParams } from 'react-router-dom'
+import { Play, Search } from 'lucide-react'
 import {
   getWord,
   getWordsByIds,
@@ -16,10 +16,11 @@ import {
   saveCollections,
 } from '../../student/collectionsStore'
 import type { VocabWord } from '../../student/types'
+import { isLexiconWordId } from '../../student/lexicon'
 import { ExampleAudioButton, WordAudioButton } from './WordAudioButton'
 import './DictionaryPage.css'
 
-function WordCard({ word }: { word: VocabWord }) {
+export function WordCard({ word }: { word: VocabWord }) {
   return (
     <article className="glass-panel word-card">
       <div className="word-card__head">
@@ -28,7 +29,10 @@ function WordCard({ word }: { word: VocabWord }) {
           <p className="ipa">{word.transcription}</p>
           <p className="word-card__tr">{word.translation}</p>
         </div>
-        <WordAudioButton word={word.word} vocabId={word.id} />
+        <WordAudioButton
+          word={word.word}
+          vocabId={isLexiconWordId(word.id) ? undefined : word.id}
+        />
       </div>
       <div className="word-card__tags">
         {word.pos && (
@@ -122,198 +126,6 @@ function GlobalSearch() {
           {!found.length && <li className="empty-state">Ничего не найдено</li>}
         </ul>
       )}
-    </div>
-  )
-}
-
-export function TopicsPage() {
-  return (
-    <CatalogGate>
-      <TopicsPageInner />
-    </CatalogGate>
-  )
-}
-
-function TopicsPageInner() {
-  const navigate = useNavigate()
-  const { catalog } = useCatalog()
-  const main = catalog!.topics.filter((t) => t.kind === 'main')
-  const lexical = catalog!.topics.filter((t) => t.kind === 'lexical')
-  return (
-    <div className="dict-page">
-      <DictionaryChrome />
-      <div className="topics-split">
-        <section className="glass-panel topics-list">
-          <h2>Основные темы</h2>
-          <ul>
-            {main.map((t) => (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/words/dictionary/topics/${t.id}`)}
-                >
-                  <strong>{t.title}</strong>
-                  <ChevronRight size={18} />
-                </button>
-              </li>
-            ))}
-            {!main.length && (
-              <li className="empty-state">
-                Пока нет назначенных тем. Учитель откроет их здесь.
-              </li>
-            )}
-          </ul>
-          <h2>Лексические группы</h2>
-          <ul>
-            {lexical.map((t) => (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/words/dictionary/topics/${t.id}`)}
-                >
-                  <strong>{t.title}</strong>
-                  <ChevronRight size={18} />
-                </button>
-              </li>
-            ))}
-            {!lexical.length && (
-              <li className="empty-state">Лексические группы появятся позже</li>
-            )}
-          </ul>
-        </section>
-        <section className="glass-panel topics-hint">
-          <h2>Выберите тему</h2>
-          <p>
-            Откройте тему, затем подтему — и переходите к словам или тренажёру.
-          </p>
-        </section>
-      </div>
-    </div>
-  )
-}
-
-export function TopicDetailPage() {
-  return (
-    <CatalogGate>
-      <TopicDetailInner />
-    </CatalogGate>
-  )
-}
-
-function TopicDetailInner() {
-  const { topicId } = useParams()
-  const { catalog } = useCatalog()
-  const topic = catalog!.topics.find((t) => t.id === topicId)
-  if (!topic) return <p className="empty-state">Тема не найдена</p>
-  const subs = catalog!.subtopics.filter((s) => s.topicId === topic.id)
-  const total = subs.reduce((n, s) => n + s.wordIds.length, 0)
-  return (
-    <div className="dict-page">
-      <DictionaryChrome crumbs={[topic.title]} />
-      <div className="topics-split">
-        <section className="glass-panel topic-hero">
-          <h2>{topic.title}</h2>
-          <p>{topic.description}</p>
-          <p className="caption">
-            {total} слов · {subs.length} подтем
-          </p>
-          <ul className="subtopic-list">
-            {subs.map((s) => (
-              <li key={s.id}>
-                <div>
-                  <strong>{s.title}</strong>
-                  <small>{s.wordIds.length} слов</small>
-                </div>
-                <div className="subtopic-list__actions">
-                  <Link
-                    className="button-primary button-small"
-                    to={`/words/dictionary/topics/${topic.id}/${s.id}`}
-                  >
-                    Открыть
-                  </Link>
-                  {s.wordIds.length > 0 && (
-                    <Link
-                      className="button-secondary button-small"
-                      to={`/words/trainer?source=topic&id=${s.id}`}
-                    >
-                      <Play size={14} /> В тренажёр
-                    </Link>
-                  )}
-                </div>
-              </li>
-            ))}
-            {!subs.length && (
-              <li className="empty-state">Подтемы скоро появятся</li>
-            )}
-          </ul>
-        </section>
-      </div>
-    </div>
-  )
-}
-
-export function SubtopicWordsPage() {
-  return (
-    <CatalogGate>
-      <SubtopicWordsInner />
-    </CatalogGate>
-  )
-}
-
-function SubtopicWordsInner() {
-  const { topicId, subtopicId } = useParams()
-  const { catalog } = useCatalog()
-  const topic = catalog!.topics.find((t) => t.id === topicId)
-  const sub = catalog!.subtopics.find((s) => s.id === subtopicId)
-  const words = getWordsByIds(sub?.wordIds || [])
-  const [selected, setSelected] = useState(words[0]?.id || '')
-  useEffect(() => {
-    if (!selected && words[0]) setSelected(words[0].id)
-  }, [words, selected])
-  const current = getWord(selected) || words[0]
-  if (!topic || !sub) return <p className="empty-state">Подтема не найдена</p>
-  return (
-    <div className="dict-page">
-      <DictionaryChrome crumbs={[topic.title, sub.title]} />
-      <div className="words-triple">
-        <section className="glass-panel words-col">
-          <h2>Слова темы · {words.length}</h2>
-          <ul className="word-rows">
-            {words.map((w) => (
-              <li
-                key={w.id}
-                className={w.id === current?.id ? 'is-active' : ''}
-              >
-                <button type="button" onClick={() => setSelected(w.id)}>
-                  <strong>{w.word}</strong>
-                  <span className="ipa">{w.transcription}</span>
-                  <small>{w.translation}</small>
-                </button>
-                <WordAudioButton word={w.word} vocabId={w.id} />
-              </li>
-            ))}
-          </ul>
-        </section>
-        {current && <WordCard word={current} />}
-        <section className="glass-panel words-col">
-          <h2>В этой подтеме</h2>
-          <ul className="word-rows">
-            {words
-              .filter((w) => w.id !== current?.id)
-              .slice(0, 8)
-              .map((w) => (
-                <li key={w.id}>
-                  <button type="button" onClick={() => setSelected(w.id)}>
-                    <strong>{w.word}</strong>
-                    <span className="ipa">{w.transcription}</span>
-                    <small>{w.translation}</small>
-                  </button>
-                  <WordAudioButton word={w.word} vocabId={w.id} />
-                </li>
-              ))}
-          </ul>
-        </section>
-      </div>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import type { WordStatus, VocabWord } from './types'
 import { getCachedCatalog } from './catalogStore'
+import { reportLexiconAnswer } from './lexicon'
 
 const KEY = 'padma-word-progress'
 
@@ -35,6 +36,7 @@ export function setWordStatus(wordId: string, status: WordStatus) {
 }
 
 export function bumpWordFromAnswer(wordId: string, correct: boolean) {
+  reportLexiconAnswer(wordId, correct)
   const cur = getWordStatus(wordId)
   if (!correct) {
     setWordStatus(wordId, cur === 'new' ? 'learning' : 'reviewing')
