@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Check, Circle } from 'lucide-react'
+import {
+  ChartColumn,
+  CheckCircle2,
+  Circle,
+  CircleDot,
+  Clock3,
+  Dumbbell,
+  Flame,
+  Heart,
+  LogOut,
+  Play,
+  RotateCcw,
+  SkipForward,
+  Target,
+  XCircle,
+} from 'lucide-react'
 import {
   getWord,
   getWordsByIds,
@@ -9,7 +25,11 @@ import {
 } from '../../student/catalogStore'
 import { EXERCISE_META } from '../../student/types'
 import {
+  createSession,
+  deleteSession,
   getSession,
+  localDay,
+  practiceDays,
   upsertSession,
   type TrainerSession,
 } from '../../student/sessionStore'
@@ -59,12 +79,12 @@ export default function TrainerSessionPage() {
     setSession(next)
   }
 
-  function answer(correct: boolean, ms = 0) {
+  function answer(correct: boolean, ms = 0, skipped = false) {
     if (!session || !current) return
     bumpWordFromAnswer(current.id, correct)
     const answers = [
       ...session.answers,
-      { wordId: current.id, correct, ms },
+      { wordId: current.id, correct, ms, ...(skipped ? { skipped } : {}) },
     ]
     const nextIndex = session.currentIndex + 1
     if (nextIndex >= session.wordIds.length) {
@@ -88,10 +108,16 @@ export default function TrainerSessionPage() {
     })
   }
 
-  function pause() {
+  // Leaving keeps the attempt only for homework tied to a course lesson;
+  // otherwise the timer and answers start over next time.
+  function exit() {
     if (!session) return
-    persist({ ...session, status: 'paused', elapsedSec: elapsed })
-    navigate('/words/trainer')
+    if (session.resumable)
+      persist({ ...session, status: 'paused', elapsedSec: elapsed })
+    else deleteSession(session.id)
+    navigate(
+      `/words/trainer?source=${session.sourceType}&id=${encodeURIComponent(session.sourceId)}`,
+    )
   }
 
   if (!session) return <p className="empty-state">Сессия не найдена</p>
@@ -109,12 +135,17 @@ export default function TrainerSessionPage() {
 
   return (
     <div className="trainer-session">
+      <nav className="glass-panel trainer-context" aria-label="Занятие">
+        <span>
+          <strong>{session.sourceLabel}</strong>
+          <small>{session.wordIds.length} слов в занятии</small>
+        </span>
+        <span>
+          <Dumbbell size={18} aria-hidden="true" />
+          {EXERCISE_META[session.exerciseType].title}
+        </span>
+      </nav>
       <section className="glass-panel trainer-board">
-        <div className="dict-crumbs">
-          <span>{session.sourceLabel}</span>
-          <span>·</span>
-          <span>{EXERCISE_META[session.exerciseType].title}</span>
-        </div>
         <div className="trainer-progress">
           <strong>
             {Math.min(session.currentIndex + 1, session.wordIds.length)} из{' '}
@@ -123,7 +154,8 @@ export default function TrainerSessionPage() {
           <div className="trainer-progress__bar">
             <span style={{ width: `${pct}%` }} />
           </div>
-          <span>
+          <span className="trainer-timer">
+            <Clock3 size={16} aria-hidden="true" />
             {mm}:{ss}
           </span>
         </div>
@@ -150,16 +182,16 @@ export default function TrainerSessionPage() {
             navigate(`/words/trainer/result/${session.id}`)
           }}
         />
-        <div className="trainer-result__actions">
-          <button type="button" className="text-button" onClick={pause}>
-            Завершить позже
-          </button>
+        <div className="trainer-session__actions">
           <button
             type="button"
             className="button-secondary button-small"
-            onClick={() => answer(false)}
+            onClick={() => answer(false, 0, true)}
           >
-            Пропустить
+            <SkipForward size={16} /> Пропустить
+          </button>
+          <button type="button" className="text-button" onClick={exit}>
+            <LogOut size={16} /> Выйти из тренажёра
           </button>
         </div>
       </section>
@@ -167,27 +199,35 @@ export default function TrainerSessionPage() {
         <h2>Слова в этом занятии</h2>
         <ul>
           {words.map((w, i) => {
-            const done = i < session.currentIndex
+            const result = session.answers[i]
             const cur = i === session.currentIndex
+            const state = result
+              ? result.correct
+                ? 'is-ok'
+                : 'is-missed'
+              : cur
+                ? 'is-current'
+                : ''
             return (
-              <li
-                key={w.id}
-                className={cur ? 'is-current' : done ? 'is-done' : ''}
-              >
-                <div>
-                  {done ? (
-                    <Check size={14} color="#10b981" />
+              <li key={w.id} className={state}>
+                {result ? (
+                  result.correct ? (
+                    <CheckCircle2 size={20} aria-label="Верно" />
                   ) : (
-                    <Circle
-                      size={14}
-                      color={cur ? '#536cff' : '#a7afc8'}
-                      fill={cur ? '#536cff' : 'transparent'}
+                    <XCircle
+                      size={20}
+                      aria-label={result.skipped ? 'Пропущено' : 'Ошибка'}
                     />
-                  )}{' '}
+                  )
+                ) : cur ? (
+                  <CircleDot size={20} aria-label="Текущее" />
+                ) : (
+                  <Circle size={20} aria-label="В очереди" />
+                )}
+                <span>
                   <strong>{w.word}</strong>
-                  <small> {done || !cur ? w.translation : '…'}</small>
-                </div>
-                <WordAudioButton word={w.word} />
+                  <small>{cur ? '…' : w.translation}</small>
+                </span>
               </li>
             )
           })}
@@ -675,49 +715,169 @@ function FindWordEx({
   )
 }
 
+function streakDays() {
+  const days = new Set(practiceDays())
+  const day = new Date()
+  if (!days.has(localDay(day))) day.setDate(day.getDate() - 1)
+  let streak = 0
+  while (days.has(localDay(day))) {
+    streak++
+    day.setDate(day.getDate() - 1)
+  }
+  return streak
+}
+
+const plural = (n: number, forms: [string, string, string]) => {
+  const tail = n % 100 > 10 && n % 100 < 20 ? 5 : n % 10
+  return forms[tail === 1 ? 0 : tail >= 2 && tail <= 4 ? 1 : 2]
+}
+
 export function TrainerResultPage() {
   const { sessionId } = useParams()
+  const navigate = useNavigate()
   const session = getSession(sessionId || '')
   if (!session) return <p className="empty-state">Результат не найден</p>
   if (session.words) registerWords(session.words)
   const total = session.answers.length || 1
   const ok = session.answers.filter((a) => a.correct).length
+  const skipped = session.answers.filter((a) => a.skipped).length
   const pct = Math.round((ok / total) * 100)
   const weak = session.answers
     .filter((a) => !a.correct)
     .map((a) => getWord(a.wordId))
-    .filter(Boolean)
+    .filter((w): w is NonNullable<typeof w> => Boolean(w))
+  const minutes = Math.floor(session.elapsedSec / 60)
+  const seconds = session.elapsedSec % 60
+  const streak = streakDays()
+  const verdict =
+    pct >= 80
+      ? ['Отличный результат!', 'Вы уверенно справились с тренировкой.']
+      : pct >= 50
+        ? ['Хороший результат', 'Ещё немного практики — и слова закрепятся.']
+        : ['Есть над чем поработать', 'Повторите сложные слова — это лучший шаг сейчас.']
+  const again = `/words/trainer?source=${session.sourceType}&id=${encodeURIComponent(session.sourceId)}`
+
+  function retryWeak() {
+    if (!session || !weak.length) return
+    const next = createSession({
+      sourceType: session.sourceType,
+      sourceId: session.sourceId,
+      sourceLabel: session.sourceLabel,
+      exerciseType: session.exerciseType,
+      wordIds: weak.map((w) => w.id),
+      words: session.words?.filter((w) => weak.some((x) => x.id === w.id)),
+      resumable: session.resumable,
+    })
+    navigate(`/words/trainer/session/${next.id}`)
+  }
+
   return (
-    <section className="glass-panel trainer-result">
-      <h1>Результат тренировки</h1>
-      <p style={{ fontSize: '2rem', margin: 0 }}>{pct}%</p>
-      <p>
-        {ok} из {session.answers.length} · {Math.round(session.elapsedSec / 60) || 1}{' '}
-        мин
-      </p>
-      {weak.length > 0 && (
-        <div>
-          <h2>Слова, к которым стоит вернуться</h2>
-          <ul>
-            {weak.map((w) => (
-              <li key={w!.id}>
-                {w!.word} · {w!.translation}
-              </li>
-            ))}
-          </ul>
+    <div className="trainer-result-page">
+      <header>
+        <h1>Результат тренировки</h1>
+        <p className="secondary">
+          {weak.length
+            ? 'Вы хорошо поработали — закрепим трудные слова ещё раз.'
+            : 'Все слова без ошибок — так держать!'}
+        </p>
+      </header>
+      <section className="glass-panel trainer-result-hero">
+        <div
+          className="trainer-result-ring"
+          style={{ '--percent': pct } as CSSProperties}
+        >
+          <strong>{pct}%</strong>
+          <small>
+            {ok} из {session.answers.length} верно
+          </small>
         </div>
-      )}
-      <div className="trainer-result__actions">
-        <Link className="button-primary" to="/words/trainer?source=revisit">
-          Повторить эти слова
-        </Link>
-        <Link className="button-secondary" to="/words/trainer">
-          Следующая тренировка
+        <div className="trainer-result-hero__body">
+          <h2>{verdict[0]}</h2>
+          <p className="secondary">{verdict[1]}</p>
+          <div className="trainer-result-stats">
+            <div>
+              <Clock3 size={20} aria-hidden="true" />
+              <span>
+                <small>Время</small>
+                <strong>
+                  {minutes ? `${minutes} мин ` : ''}
+                  {seconds} сек
+                </strong>
+              </span>
+            </div>
+            <div>
+              <Flame size={20} aria-hidden="true" />
+              <span>
+                <small>Серия</small>
+                <strong>
+                  {streak} {plural(streak, ['день', 'дня', 'дней'])}
+                </strong>
+              </span>
+            </div>
+            <div>
+              <Target size={20} aria-hidden="true" />
+              <span>
+                <small>Набор</small>
+                <strong>{session.sourceLabel}</strong>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div className="trainer-result-grid">
+        <section className="glass-panel trainer-result-good">
+          <h2>
+            <ChartColumn size={20} aria-hidden="true" /> Что получилось хорошо
+          </h2>
+          <div className="trainer-result-row">
+            <span>
+              <strong>{EXERCISE_META[session.exerciseType].title}</strong>
+              <small>
+                {ok} из {session.answers.length} верно
+                {skipped > 0 && ` · пропущено ${skipped}`}
+              </small>
+            </span>
+            <span className="trainer-result-bar">
+              <span style={{ width: `${pct}%` }} />
+            </span>
+            <strong>{pct}%</strong>
+          </div>
+        </section>
+        <section className="glass-panel trainer-result-weak">
+          <h2>
+            <Heart size={20} aria-hidden="true" /> Стоит повторить
+          </h2>
+          {!weak.length ? (
+            <p className="caption">Ошибок нет — повторять нечего.</p>
+          ) : (
+            <ul>
+              {weak.map((w) => (
+                <li key={w.id}>
+                  <strong>{w.word}</strong>
+                  <WordAudioButton word={w.word} />
+                  <span>{w.translation}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+      <div className="trainer-result-actions glass-panel">
+        <button
+          type="button"
+          className="button-primary"
+          disabled={!weak.length}
+          onClick={retryWeak}
+        >
+          <RotateCcw size={18} /> Повторить сложные слова
+        </button>
+        <Link className="button-secondary" to={again}>
+          <Play size={18} /> Следующая тренировка
         </Link>
         <Link className="button-secondary" to="/words/progress">
-          К прогрессу
+          <ChartColumn size={18} /> К прогрессу
         </Link>
       </div>
-    </section>
+    </div>
   )
 }

@@ -46,6 +46,15 @@ export type StudentSubtopicWords = {
   progress: LexiconProgress
 }
 export type LexiconBook = { id: string; title: string; level: string }
+/** Homework still on the student's side, usable as a trainer set. */
+export type HomeworkSet = {
+  id: string
+  title: string
+  due: string
+  status: 'todo' | 'returned'
+  wordCount: number
+}
+export type HomeworkWords = { id: string; title: string; words: StudentWord[] }
 export type SearchUnit = {
   id: string
   number: number
@@ -92,6 +101,10 @@ export const fetchTopic = (id: string, bookId = '') =>
 export const fetchSubtopic = (id: string) =>
   api<StudentSubtopicWords>(`/lexicon/me/subtopics/${encodeURIComponent(id)}`)
 export const fetchBooks = () => api<LexiconBook[]>('/lexicon/books')
+export const fetchHomeworkSets = () =>
+  api<HomeworkSet[]>('/lexicon/me/homework')
+export const fetchHomeworkWords = (id: string) =>
+  api<HomeworkWords>(`/lexicon/me/homework/${encodeURIComponent(id)}/words`)
 export const searchTerms = (q: string) =>
   api<{ items: SearchTerm[] }>(
     `/lexicon/search?limit=12&q=${encodeURIComponent(q)}`,

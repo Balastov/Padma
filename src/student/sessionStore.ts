@@ -2,7 +2,13 @@ import type { ExerciseType, VocabWord } from './types'
 
 export type TrainerSession = {
   id: string
-  sourceType: 'all' | 'topic' | 'lesson' | 'collection' | 'revisit'
+  sourceType:
+    | 'all'
+    | 'topic'
+    | 'lesson'
+    | 'collection'
+    | 'revisit'
+    | 'homework'
   sourceId: string
   sourceLabel: string
   exerciseType: ExerciseType
@@ -10,10 +16,12 @@ export type TrainerSession = {
   currentIndex: number
   startedAt: string
   status: 'active' | 'paused' | 'done'
-  answers: { wordId: string; correct: boolean; ms: number }[]
+  answers: { wordId: string; correct: boolean; ms: number; skipped?: boolean }[]
   elapsedSec: number
   /** Snapshot of textbook dictionary words used by the session. */
   words?: VocabWord[]
+  /** Leaving keeps the timer and answers (homework tied to a lesson). */
+  resumable?: boolean
 }
 
 const KEY = 'padma-trainer-sessions'
@@ -36,6 +44,24 @@ function saveAll(list: TrainerSession[]) {
   }
 }
 
+export function deleteSession(id: string) {
+  saveAll(loadAll().filter((s) => s.id !== id))
+}
+
+/** Local days (YYYY-MM-DD) with at least one finished training. */
+export function practiceDays(): string[] {
+  return [
+    ...new Set(
+      loadAll()
+        .filter((s) => s.status === 'done')
+        .map((s) => localDay(new Date(s.startedAt))),
+    ),
+  ].sort()
+}
+
+export const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 export function getSession(id: string) {
   return loadAll().find((s) => s.id === id)
 }
@@ -50,7 +76,12 @@ export function upsertSession(session: TrainerSession) {
   saveAll(list)
 }
 
-export function createSession(input: Omit<TrainerSession, 'id' | 'startedAt' | 'status' | 'answers' | 'currentIndex' | 'elapsedSec'> & { wordIds: string[] }) {
+export function createSession(
+  input: Omit<
+    TrainerSession,
+    'id' | 'startedAt' | 'status' | 'answers' | 'currentIndex' | 'elapsedSec'
+  > & { wordIds: string[] },
+) {
   const session: TrainerSession = {
     ...input,
     id: crypto.randomUUID(),

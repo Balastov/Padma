@@ -235,6 +235,64 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
     return true
   }
 
+  // Trainer sets from homework: work still on the student's side
+  // (no submission yet or returned for revision).
+  if (path === '/api/lexicon/me/homework' && req.method === 'GET') {
+    const rows = db
+      .prepare(
+        `SELECT h.id, h.title, h.due, h.created,
+                (SELECT status FROM submissions s WHERE s.homeworkId = h.id
+                 ORDER BY s.created DESC, s.rowid DESC LIMIT 1) AS status,
+                (SELECT count(*) FROM homework_terms t WHERE t.homeworkId = h.id) AS wordCount
+         FROM homework h WHERE h.studentId = ?
+         ORDER BY h.created DESC`,
+      )
+      .all(user.id)
+      .map((h) => ({ ...h, status: h.status || 'todo' }))
+      .filter((h) => h.status === 'todo' || h.status === 'returned')
+    send(200, rows)
+    return true
+  }
+
+  const hwMatch = /^\/api\/lexicon\/me\/homework\/([^/]+)\/words$/.exec(path)
+  if (hwMatch && req.method === 'GET') {
+    const hw = db
+      .prepare('SELECT id, title FROM homework WHERE id = ? AND studentId = ?')
+      .get(decodeURIComponent(hwMatch[1]), user.id)
+    if (!hw) fail(404, 'Задание не найдено')
+    const statuses = statusesOf(db, user.id)
+    // The assigned snapshot wins; examples come from the dictionary.
+    const words = db
+      .prepare(
+        `SELECT h.termId AS id, h.term, h.translation, h.transcription,
+                o.sentence, o.sentenceTranslation, o.pos, o.category, b.level
+         FROM homework_terms h
+         LEFT JOIN lexicon_occurrences o ON o.id = (
+           SELECT min(x.id) FROM lexicon_occurrences x WHERE x.termId = h.termId)
+         LEFT JOIN lexicon_units u ON u.id = o.unitId
+         LEFT JOIN lexicon_books b ON b.id = u.bookId
+         WHERE h.homeworkId = ? ORDER BY h.sortOrder`,
+      )
+      .all(hw.id)
+      .map((w) => {
+        const template = TEMPLATE_SENTENCE.test(w.sentence || '')
+        return {
+          id: w.id,
+          term: w.term,
+          translation: w.translation,
+          transcription: w.transcription,
+          sentence: template ? '' : w.sentence || '',
+          sentenceTranslation: template ? '' : w.sentenceTranslation || '',
+          pos: w.pos || '',
+          category: w.category || '',
+          level: w.level || '',
+          status: statuses.get(w.id) || 'new',
+        }
+      })
+    send(200, { ...hw, words })
+    return true
+  }
+
   if (path === '/api/lexicon/me/progress' && req.method === 'POST') {
     const data = await body(req, 50000)
     const results = Array.isArray(data.results) ? data.results : []
@@ -252,7 +310,9 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
         .all(...ids)
         .map((r) => r.id),
     )
-    if (known.size !== ids.length) fail(400, 'Некоторые слова не найдены')
+    // Homework keeps a snapshot, so a word may be gone from the dictionary.
+    const accepted = results.filter((r) => known.has(r.termId))
+    if (!accepted.length) fail(400, 'Слова не найдены')
     const statuses = statusesOf(db, user.id)
     const now = new Date().toISOString()
     const upsert = db.prepare(
@@ -264,7 +324,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
     )
     db.exec('BEGIN IMMEDIATE')
     try {
-      for (const r of results) {
+      for (const r of accepted) {
         const status = nextStatus(statuses.get(r.termId) || 'new', r.correct)
         statuses.set(r.termId, status)
         upsert.run(
@@ -282,7 +342,9 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
       throw error
     }
     send(200, {
-      statuses: Object.fromEntries(ids.map((id) => [id, statuses.get(id)])),
+      statuses: Object.fromEntries(
+        [...known].map((id) => [id, statuses.get(id)]),
+      ),
     })
     return true
   }

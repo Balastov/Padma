@@ -198,6 +198,60 @@ test('student dictionary: topics, levels, subtopic words, progress', async () =>
       .get('anna', aunt)
     assert.deepEqual({ ...row }, { correct: 3, wrong: 0 })
 
+    // Unknown words in a batch are skipped, not fatal.
+    const mixed = await request(
+      '/lexicon/me/progress',
+      'POST',
+      { results: [{ termId: 'gone', correct: true }, { termId: termId('kitchen'), correct: true }] },
+      anna,
+    )
+    assert.deepEqual(mixed.body.statuses, { [termId('kitchen')]: 'learning' })
+
+    // Trainer sets from homework: only open work, own homework only.
+    const hw = (title, termIds) =>
+      request(
+        '/homework',
+        'POST',
+        {
+          studentId: 'anna',
+          title,
+          description: 'x',
+          due: '',
+          lexicon: [{ kind: 'subtopic', id: family.id, termIds }],
+        },
+        teacher,
+      )
+    const open = await hw('Семья', [termId('uncle'), aunt])
+    const done = await hw('Сдано', [aunt])
+    db.prepare(
+      "INSERT INTO submissions (id, homeworkId, text, created, status) VALUES ('s1', ?, 'a', ?, 'accepted')",
+    ).run(done.body.id, new Date().toISOString())
+    const returned = await hw('На доработке', [aunt])
+    db.prepare(
+      "INSERT INTO submissions (id, homeworkId, text, created, status) VALUES ('s2', ?, 'a', ?, 'returned')",
+    ).run(returned.body.id, new Date().toISOString())
+    const sets = await request('/lexicon/me/homework', 'GET', undefined, anna)
+    assert.deepEqual(
+      sets.body.map((h) => [h.title, h.status, h.wordCount]),
+      [
+        ['На доработке', 'returned', 1],
+        ['Семья', 'todo', 2],
+      ],
+    )
+    const hwWords = await request(`/lexicon/me/homework/${open.body.id}/words`, 'GET', undefined, anna)
+    assert.deepEqual(
+      hwWords.body.words.map((w) => [w.term, w.translation, w.sentence, w.level, w.status]),
+      [
+        ['uncle', 'дядя', 'My uncle is a doctor.', 'A1-A2', 'learning'],
+        ['aunt', 'тётя', 'My aunt lives in London.', 'A1-A2', 'mastered'],
+      ],
+    )
+    assert.equal(
+      (await request(`/lexicon/me/homework/${open.body.id}/words`, 'GET', undefined, boris)).status,
+      404,
+    )
+    assert.deepEqual((await request('/lexicon/me/homework', 'GET', undefined, boris)).body, [])
+
     // Search results link occurrences to their unit subtopic.
     const found = await request('/lexicon/search?q=aunt', 'GET', undefined, anna)
     assert.equal(found.body.items[0].units[0].subtopicId, family.id)

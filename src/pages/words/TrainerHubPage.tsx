@@ -1,36 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Play } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ChevronDown, ClipboardList, Layers, Play, X } from 'lucide-react'
 import {
   ALLOWED_EXERCISES,
   EXERCISE_META,
   type ExerciseType,
+  type VocabWord,
+  type WordStatus,
 } from '../../student/types'
 import { useCatalog } from '../../student/useCatalog'
+import { getWordsByIds, registerWords } from '../../student/catalogStore'
+import { loadCollections } from '../../student/collectionsStore'
+import { createSession } from '../../student/sessionStore'
 import {
-  allowedExercisesFor,
-  registerWords,
-} from '../../student/catalogStore'
-import {
+  fetchHomeworkSets,
+  fetchHomeworkWords,
   fetchSubtopic,
-  fetchTopic,
-  fetchTopics,
   toVocabWord,
 } from '../../student/lexicon'
-import type {
-  StudentSubtopicWords,
-  StudentTopic,
-  StudentTopicDetail,
-} from '../../student/lexicon'
-import type { WordStatus } from '../../student/types'
-import { loadCollections } from '../../student/collectionsStore'
-import {
-  createSession,
-  getPausedSession,
-} from '../../student/sessionStore'
-import { revisitWords } from '../../student/progressStore'
+import type { HomeworkSet, StudentWord } from '../../student/lexicon'
+import { friendlyDate } from '../../api'
+import { wordsCount } from '../../components/lexiconFormat'
 import './TrainerPage.css'
 
+const SESSION_SIZE = 12
 // Words not yet mastered come first in a dictionary training.
 const STATUS_ORDER: Record<WordStatus, number> = {
   learning: 0,
@@ -38,280 +31,271 @@ const STATUS_ORDER: Record<WordStatus, number> = {
   new: 2,
   mastered: 3,
 }
+const HW_STATUS = { todo: 'К выполнению', returned: 'Нужна доработка' }
+
+type Picked = {
+  kind: 'homework' | 'collection' | 'topic'
+  id: string
+}
+type WordSet = {
+  key: string
+  title: string
+  words: VocabWord[]
+  lexicon: boolean
+}
+
+const ordered = (words: StudentWord[], setId: string) =>
+  [...words]
+    .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
+    .map((w) => toVocabWord(w, setId))
+
+function pickedFrom(params: URLSearchParams): Picked | null {
+  const id = params.get('id')
+  const source = params.get('source')
+  if (!id) return null
+  if (source === 'topic' || source === 'homework' || source === 'collection')
+    return { kind: source, id }
+  return null
+}
 
 export default function TrainerHubPage() {
-  const { catalog, loading, error } = useCatalog()
+  const { catalog } = useCatalog()
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const initialSource =
-    (params.get('source') as
-      | 'all'
-      | 'topic'
-      | 'lesson'
-      | 'collection'
-      | 'revisit') || 'all'
-  const [source, setSource] = useState(initialSource)
-  // «Темы» use the textbook dictionary.
-  const [topics, setTopics] = useState<StudentTopic[]>([])
-  const [topicId, setTopicId] = useState('')
-  const [topic, setTopic] = useState<StudentTopicDetail | null>(null)
-  // A subtopic opened from the dictionary decides the topic itself.
-  const requestedSub = initialSource === 'topic' ? params.get('id') || '' : ''
-  const [subId, setSubId] = useState(requestedSub)
-  const [sub, setSub] = useState<StudentSubtopicWords | null>(null)
-  const [lessonId, setLessonId] = useState(params.get('id') || '')
-  const [collectionId, setCollectionId] = useState(params.get('id') || '')
-  const personal = loadCollections()
-  const paused = getPausedSession()
+  const [picked, setPicked] = useState<Picked | null>(() => pickedFrom(params))
+  const [open, setOpen] = useState<'' | 'homework' | 'collection'>('')
+  const [homework, setHomework] = useState<HomeworkSet[] | null>(null)
+  const [set, setSet] = useState<WordSet | null>(null)
+  const [error, setError] = useState('')
+  const pickers = useRef<HTMLDivElement>(null)
+  const collections = loadCollections()
 
   useEffect(() => {
-    if (source !== 'topic' || topics.length) return
     let active = true
-    fetchTopics()
-      .then((list) => {
-        if (!active) return
-        setTopics(list)
-        setTopicId((id) => id || (requestedSub ? '' : list[0]?.id || ''))
-      })
-      .catch(() => {})
+    fetchHomeworkSets()
+      .then((list) => active && setHomework(list))
+      .catch(() => active && setHomework([]))
     return () => {
       active = false
     }
-  }, [source, topics.length, requestedSub])
+  }, [])
 
   useEffect(() => {
-    if (!topicId) return
-    let active = true
-    fetchTopic(topicId)
-      .then((detail) => {
-        if (!active) return
-        setTopic(detail)
-        setSubId((id) =>
-          detail.subtopics.some((s) => s.id === id)
-            ? id
-            : detail.subtopics[0]?.id || '',
-        )
-      })
-      .catch(() => {})
-    return () => {
-      active = false
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!pickers.current?.contains(e.target as Node)) setOpen('')
     }
-  }, [topicId])
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen('')
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
 
+  // Dictionary words of the picked homework or subtopic.
+  const pickedKind = picked?.kind
+  const pickedId = picked?.id
+  const pickedKey = picked ? `${picked.kind}:${picked.id}` : ''
   useEffect(() => {
-    if (!subId) return
+    if (!pickedId || pickedKind === 'collection') return
     let active = true
-    fetchSubtopic(subId)
+    const load =
+      pickedKind === 'homework'
+        ? fetchHomeworkWords(pickedId)
+        : fetchSubtopic(pickedId)
+    load
       .then((data) => {
         if (!active) return
-        registerWords(data.words.map((w) => toVocabWord(w, data.id)))
-        setSub(data)
-        setTopicId((id) => id || data.topicId)
+        const words = ordered(data.words, data.id)
+        registerWords(words)
+        setSet({
+          key: `${pickedKind}:${pickedId}`,
+          title: data.title,
+          words,
+          lexicon: true,
+        })
+        setError('')
       })
-      .catch(() => {})
+      .catch((e: Error) => active && setError(e.message))
     return () => {
       active = false
     }
-  }, [subId])
+  }, [pickedKind, pickedId])
 
-  useEffect(() => {
-    if (!catalog) return
-    if (!lessonId && catalog.lessons[0]) setLessonId(catalog.lessons[0].id)
-    if (!collectionId) {
-      const first = catalog.collections[0] || personal[0]
-      if (first) setCollectionId(first.id)
-    }
-  }, [catalog, lessonId, collectionId, personal])
+  const collection =
+    pickedKind === 'collection'
+      ? collections.find((c) => c.id === pickedId)
+      : undefined
+  const current: WordSet | null =
+    pickedKind === 'collection'
+      ? collection && catalog
+        ? {
+            key: pickedKey,
+            title: collection.title,
+            words: getWordsByIds(collection.wordIds),
+            lexicon: false,
+          }
+        : null
+      : set?.key === pickedKey
+        ? set
+        : null
+  const sessionWords = current?.words.slice(0, SESSION_SIZE) || []
 
-  const collections = useMemo(() => {
-    const assigned = catalog?.collections || []
-    const ids = new Set(assigned.map((c) => c.id))
-    return [...assigned, ...personal.filter((c) => !ids.has(c.id))]
-  }, [catalog, personal])
-
-  const wordIds = useMemo(() => {
-    if (!catalog) return []
-    if (source === 'revisit') return revisitWords().map((w) => w.id)
-    if (source === 'all') return catalog.words.map((w) => w.id)
-    if (source === 'topic') {
-      if (sub?.id !== subId) return []
-      return [...sub.words]
-        .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
-        .map((w) => toVocabWord(w, sub.id).id)
-    }
-    if (source === 'lesson') {
-      return catalog.lessons.find((l) => l.id === lessonId)?.wordIds || []
-    }
-    if (source === 'collection') {
-      return collections.find((c) => c.id === collectionId)?.wordIds || []
-    }
-    return []
-  }, [catalog, source, sub, subId, lessonId, collectionId, collections])
-
-  const sourceLabel = useMemo(() => {
-    if (!catalog) return ''
-    if (source === 'revisit') return 'Слова для повторения'
-    if (source === 'all') return 'Все слова'
-    if (source === 'topic')
-      return sub?.id === subId ? sub.title : 'Тема'
-    if (source === 'lesson')
-      return catalog.lessons.find((l) => l.id === lessonId)?.title || 'Урок'
-    return collections.find((c) => c.id === collectionId)?.title || 'Коллекция'
-  }, [catalog, source, sub, subId, lessonId, collectionId, collections])
-
-  const unlocked = useMemo(() => {
-    if (source === 'revisit' || source === 'all' || source === 'topic')
-      return ALLOWED_EXERCISES
-    const list = allowedExercisesFor(
-      source,
-      source === 'lesson' ? lessonId : collectionId,
-    )
-    if (!list) return ALLOWED_EXERCISES
-    return ALLOWED_EXERCISES.filter((t) => list.includes(t))
-  }, [source, lessonId, collectionId])
-
-  const subs = topic?.id === topicId ? topic.subtopics : []
-  const canStart = wordIds.length > 0 && (source !== 'topic' || Boolean(subId))
+  function choose(next: Picked) {
+    setPicked(next)
+    setOpen('')
+  }
 
   function start(type: ExerciseType) {
-    if (!canStart) return
+    if (!current || !picked || !sessionWords.length) return
     const session = createSession({
-      sourceType: source === 'revisit' ? 'revisit' : source,
-      sourceId:
-        source === 'topic'
-          ? subId
-          : source === 'lesson'
-            ? lessonId
-            : source === 'collection'
-              ? collectionId
-              : 'all',
-      sourceLabel,
+      sourceType: picked.kind,
+      sourceId: picked.id,
+      sourceLabel: current.title,
       exerciseType: type,
-      wordIds: wordIds.slice(0, 12),
-      words:
-        source === 'topic' && sub
-          ? sub.words
-              .map((w) => toVocabWord(w, sub.id))
-              .filter((w) => wordIds.slice(0, 12).includes(w.id))
-          : undefined,
+      wordIds: sessionWords.map((w) => w.id),
+      words: current.lexicon ? sessionWords : undefined,
+      // Pausing on exit is for homework tied to a course lesson (not yet).
+      resumable: false,
     })
     navigate(`/words/trainer/session/${session.id}`)
   }
 
   const groups = ['Повторение', 'Понимание', 'Аудирование', 'Игровые форматы']
-
-  if (loading) return <p role="status">Загружаем тренажёр…</p>
-  if (error)
-    return (
-      <p className="error" role="alert">
-        {error}
-      </p>
-    )
+  const hwPicked = pickedKind === 'homework'
+  const colPicked = pickedKind === 'collection'
+  const hwTitle = hwPicked
+    ? homework?.find((h) => h.id === pickedId)?.title || current?.title
+    : ''
 
   return (
     <div className="trainer-hub">
       <p className="dict-lead">
         Ваше пространство для практики слов. Учитесь в комфортном темпе.
       </p>
-      {paused && (
-        <section className="glass-panel trainer-resume">
-          <div>
-            <small>Незавершённая тренировка</small>
-            <strong>
-              {paused.sourceLabel} · {paused.currentIndex} из{' '}
-              {paused.wordIds.length}
-            </strong>
+      <section className="glass-panel trainer-sources">
+        <div className="trainer-pickers" ref={pickers}>
+          <div className="trainer-picker">
+            <button
+              type="button"
+              className={`trainer-picker__toggle${hwPicked ? ' is-picked' : ''}`}
+              aria-expanded={open === 'homework'}
+              disabled={colPicked}
+              title={colPicked ? 'Сначала сбросьте выбранную коллекцию' : undefined}
+              onClick={() => setOpen(open === 'homework' ? '' : 'homework')}
+            >
+              <ClipboardList size={18} aria-hidden="true" />
+              <span>{hwPicked ? hwTitle : 'Домашнее задание'}</span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+            {open === 'homework' && (
+              <ul className="trainer-picker__menu">
+                {!homework && <li className="caption">Загружаем задания…</li>}
+                {homework && !homework.length && (
+                  <li className="caption">
+                    Нет заданий к выполнению или на доработке.
+                  </li>
+                )}
+                {homework?.map((h) => (
+                  <li key={h.id}>
+                    <button
+                      type="button"
+                      disabled={!h.wordCount}
+                      className={hwPicked && pickedId === h.id ? 'is-active' : ''}
+                      onClick={() => choose({ kind: 'homework', id: h.id })}
+                    >
+                      <strong>{h.title}</strong>
+                      <small>
+                        {HW_STATUS[h.status]}
+                        {h.due && ` · до ${friendlyDate(h.due)}`} ·{' '}
+                        {h.wordCount ? wordsCount(h.wordCount) : 'без слов'}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          <Link
-            className="button-primary"
-            to={`/words/trainer/session/${paused.id}`}
-          >
-            <Play size={18} /> Продолжить
-          </Link>
-        </section>
-      )}
-      <div className="words-subtabs">
-        {(
-          [
-            ['all', 'Все слова'],
-            ['topic', 'Темы'],
-            ['lesson', 'Слова уроков'],
-            ['collection', 'Коллекции'],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`words-chip${source === key ? ' is-active' : ''}`}
-            onClick={() => setSource(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="trainer-filters glass-panel">
-        {source === 'topic' && (
-          <>
-            <label className="field">
-              <span>Тема</span>
-              <select
-                value={topicId}
-                onChange={(e) => setTopicId(e.target.value)}
-              >
-                {topics.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Подтема</span>
-              <select value={subId} onChange={(e) => setSubId(e.target.value)}>
-                {subs.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title} ({s.termCount})
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        )}
-        {source === 'lesson' && (
-          <label className="field">
-            <span>Урок</span>
-            <select
-              value={lessonId}
-              onChange={(e) => setLessonId(e.target.value)}
+          <div className="trainer-picker">
+            <button
+              type="button"
+              className={`trainer-picker__toggle${colPicked ? ' is-picked' : ''}`}
+              aria-expanded={open === 'collection'}
+              disabled={hwPicked}
+              title={hwPicked ? 'Сначала сбросьте выбранное задание' : undefined}
+              onClick={() => setOpen(open === 'collection' ? '' : 'collection')}
             >
-              {(catalog?.lessons || []).map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.title}
-                </option>
-              ))}
-            </select>
-          </label>
+              <Layers size={18} aria-hidden="true" />
+              <span>
+                {colPicked ? collection?.title || 'Коллекция' : 'Мои коллекции'}
+              </span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+            {open === 'collection' && (
+              <ul className="trainer-picker__menu">
+                {!collections.length && (
+                  <li className="caption">
+                    Коллекций пока нет — их можно будет создавать в словаре.
+                  </li>
+                )}
+                {collections.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      disabled={!c.wordIds.length}
+                      className={colPicked && pickedId === c.id ? 'is-active' : ''}
+                      onClick={() => choose({ kind: 'collection', id: c.id })}
+                    >
+                      <strong>{c.title}</strong>
+                      <small>{wordsCount(c.wordIds.length)}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
         )}
-        {source === 'collection' && (
-          <label className="field">
-            <span>Коллекция</span>
-            <select
-              value={collectionId}
-              onChange={(e) => setCollectionId(e.target.value)}
+        {picked ? (
+          <p className="trainer-set">
+            <span>
+              {pickedKind === 'topic' ? 'Подтема' : 'Набор'}:{' '}
+              <strong>{current?.title || '…'}</strong>
+              {current && (
+                <>
+                  {' '}
+                  · {wordsCount(current.words.length)}
+                  {current.words.length > SESSION_SIZE &&
+                    ` · в занятии ${SESSION_SIZE}, сначала неосвоенные`}
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setPicked(null)
+                navigate('/words/trainer', { replace: true })
+              }}
             >
-              <option value="">Выберите</option>
-              {collections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-          </label>
+              <X size={14} /> Сбросить
+            </button>
+          </p>
+        ) : (
+          <p className="caption trainer-set">
+            Выберите домашнее задание или коллекцию — из их слов соберётся
+            тренировка.
+          </p>
         )}
-        <p className="caption">
-          Набор: {sourceLabel} · {wordIds.length} слов
-        </p>
-      </div>
+      </section>
       <h2>Выберите формат тренировки</h2>
       <div className="trainer-formats">
         {groups.map((group) => (
@@ -320,38 +304,26 @@ export default function TrainerHubPage() {
             <ul>
               {ALLOWED_EXERCISES.filter(
                 (t) => EXERCISE_META[t].group === group,
-              ).map((type) => {
-                const open = unlocked.includes(type)
-                return (
-                  <li key={type}>
-                    <div>
-                      <strong>{EXERCISE_META[type].title}</strong>
-                      <small>
-                        {open
-                          ? EXERCISE_META[type].description
-                          : 'Учитель пока не открыл этот формат'}
-                      </small>
-                    </div>
-                    <button
-                      type="button"
-                      className="button-primary button-small"
-                      disabled={!canStart || !open}
-                      onClick={() => start(type)}
-                    >
-                      <Play size={14} /> Начать
-                    </button>
-                  </li>
-                )
-              })}
+              ).map((type) => (
+                <li key={type}>
+                  <div>
+                    <strong>{EXERCISE_META[type].title}</strong>
+                    <small>{EXERCISE_META[type].description}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="button-primary button-small"
+                    disabled={!sessionWords.length}
+                    onClick={() => start(type)}
+                  >
+                    <Play size={14} /> Начать
+                  </button>
+                </li>
+              ))}
             </ul>
           </section>
         ))}
       </div>
-      {!canStart && (
-        <p className="caption">
-          Выберите конкретную подтему, урок или коллекцию со словами.
-        </p>
-      )}
     </div>
   )
 }
