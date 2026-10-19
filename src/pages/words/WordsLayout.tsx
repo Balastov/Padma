@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { BookMarked, Dumbbell, ChartColumn } from 'lucide-react'
 import './WordsLayout.css'
+import './DictionaryPage.css'
 
 export default function WordsLayout() {
   return (

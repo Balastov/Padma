@@ -191,7 +191,6 @@ export default function LexiconTopicsPage() {
   }, [shownId, level])
 
   const main = topics?.filter((t) => t.kind === 'main') || []
-  const lexical = topics?.filter((t) => t.kind === 'lexical') || []
   const current = detail?.id === shownId ? detail : null
 
   const topicList = (list: StudentTopic[]) => (
@@ -232,12 +231,11 @@ export default function LexiconTopicsPage() {
           <aside className="glass-panel lx-topics">
             <h2>Основные темы</h2>
             {topicList(main)}
-            {!!lexical.length && (
-              <>
-                <h2>Лексические группы</h2>
-                {topicList(lexical)}
-              </>
-            )}
+            <h2>Лексические группы</h2>
+            <p className="lx-topics__note">
+              Раздел на доработке: здесь появятся группы вроде «Фразовые
+              глаголы» и «Неправильные глаголы».
+            </p>
           </aside>
           <div className="lx-detail">
             {!current ? (

@@ -19,12 +19,10 @@ import LibraryPage, {
 } from './pages/library/LibraryPage'
 import StudentSettingsPage from './pages/settings/StudentSettingsPage'
 import WordsLayout from './pages/words/WordsLayout'
-import DictionaryHub, {
-  LessonsWordsPage,
-  CollectionsPage,
-  CollectionDetailPage,
-  WordDeepLinkPage,
-} from './pages/words/DictionaryPages'
+import {
+  CollectionsStubPage,
+  LessonsStubPage,
+} from './pages/words/DictionaryStubs'
 import LexiconTopicsPage from './pages/words/LexiconTopicsPage'
 import LexiconSubtopicPage from './pages/words/LexiconSubtopicPage'
 import TrainerHubPage from './pages/words/TrainerHubPage'
@@ -68,7 +66,10 @@ function StudentRoutes({
         />
         <Route path="words" element={<WordsLayout />}>
           <Route index element={<Navigate to="dictionary" replace />} />
-          <Route path="dictionary" element={<DictionaryHub />} />
+          <Route
+            path="dictionary"
+            element={<Navigate to="/words/dictionary/topics" replace />}
+          />
           <Route path="dictionary/topics" element={<LexiconTopicsPage />} />
           <Route
             path="dictionary/topics/:topicId"
@@ -78,20 +79,23 @@ function StudentRoutes({
             path="dictionary/topics/:topicId/:subtopicId"
             element={<LexiconSubtopicPage />}
           />
-          <Route path="dictionary/lessons" element={<LessonsWordsPage />} />
+          <Route path="dictionary/lessons" element={<LessonsStubPage />} />
           <Route
             path="dictionary/lessons/:lessonId"
-            element={<LessonsWordsPage />}
+            element={<LessonsStubPage />}
           />
           <Route
             path="dictionary/collections"
-            element={<CollectionsPage />}
+            element={<CollectionsStubPage />}
           />
           <Route
             path="dictionary/collections/:collectionId"
-            element={<CollectionDetailPage />}
+            element={<CollectionsStubPage />}
           />
-          <Route path="word/:wordId" element={<WordDeepLinkPage />} />
+          <Route
+            path="word/:wordId"
+            element={<Navigate to="/words/dictionary/topics" replace />}
+          />
           <Route path="trainer" element={<TrainerHubPage />} />
           <Route
             path="trainer/session/:sessionId"
