@@ -24,6 +24,7 @@ import {
   cheer,
   posLabel,
   praise,
+  reveal,
   shuffle,
 } from './exerciseUtils'
 import './exercises.css'
@@ -88,7 +89,7 @@ function Heading({ title, hint }: { title: string; hint: string }) {
 function Feedback({ ok, correct }: { ok: boolean; correct?: ReactNode }) {
   const [text] = useState(() => (ok ? praise() : cheer()))
   return (
-    <p className={`ex-feedback ${ok ? 'is-ok' : 'is-wrong'}`} role="status">
+    <p ref={reveal} className={`ex-feedback ${ok ? 'is-ok' : 'is-wrong'}`} role="status">
       {ok ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
       <span>
         <strong>{text}</strong>

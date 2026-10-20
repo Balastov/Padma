@@ -433,19 +433,73 @@
   min-width: 180px;
 }
 
+@media (max-width: 900px) {
+  /* The answer bar stays on screen above the bottom navigation. */
+  .trainer-board .ex-rate {
+    order: 10;
+  }
+  .trainer-board .ex-actions,
+  .trainer-board .ex-rate {
+    position: sticky;
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    z-index: 6;
+    margin-inline: -8px;
+    padding: 10px;
+    border-radius: 20px;
+    background: var(--glass-fill-strong);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+  }
+  .ex-feedback {
+    scroll-margin-bottom: calc(170px + env(safe-area-inset-bottom, 0px));
+  }
+}
 @media (max-width: 700px) {
+  .ex {
+    gap: 12px;
+  }
   .ex-card__top,
   .ex-prompt,
   .ex-options {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
-  .ex-prompt .ex-picture {
-    min-height: 100px;
+  .ex-card {
+    padding: 16px;
+    gap: 12px;
+  }
+  .ex-picture,
+  .ex-prompt .ex-picture,
+  .ex-card--center .ex-picture {
+    min-height: 76px;
+    height: 76px;
+  }
+  .ex-prompt {
+    gap: 10px;
+    padding: 12px;
+  }
+  .ex-option {
+    min-height: 52px;
+    padding: 10px 14px;
   }
   .ex-rate {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
-  .ex-actions > * {
+  .ex-rate button {
+    min-height: 54px;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.9rem;
+  }
+  .ex-actions > .button-primary {
     flex: 1 1 100%;
+  }
+  .ex-actions > .button-secondary {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 42px;
+    padding-inline: 8px;
+    font-size: 0.85rem;
   }
 }

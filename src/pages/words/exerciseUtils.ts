@@ -56,3 +56,8 @@ const CHEER = [
 const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)]
 export const praise = () => pick(PRAISE)
 export const cheer = () => pick(CHEER)
+
+/** Ref callback: brings an answer message into view on phones. */
+export function reveal(el: HTMLElement | null) {
+  el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+}

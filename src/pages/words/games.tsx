@@ -15,7 +15,14 @@ import type { VocabWord } from '../../student/types'
 import { playWordAudio, speakText } from '../../student/audio'
 import { fetchRecord, saveRecord } from '../../student/lexicon'
 import type { TrainerRecord } from '../../student/lexicon'
-import { assembleTarget, bareTerm, cheer, praise, shuffle } from './exerciseUtils'
+import {
+  assembleTarget,
+  bareTerm,
+  cheer,
+  praise,
+  reveal,
+  shuffle,
+} from './exerciseUtils'
 import './exercises.css'
 import './games.css'
 
@@ -195,7 +202,7 @@ export function FindWordFormat({
         </aside>
       </div>
       {result !== null && (
-        <p className={`ex-feedback ${result ? 'is-ok' : 'is-wrong'}`} role="status">
+        <p ref={reveal} className={`ex-feedback ${result ? 'is-ok' : 'is-wrong'}`} role="status">
           <span>
             <strong>{result ? message.ok : message.wrong}</strong>
             {!result && <span> Правильно: <b>{bareTerm(word.word)}</b></span>}
@@ -403,6 +410,7 @@ export function MatchPairsFormat({
       </div>
       {checked && (
         <p
+          ref={reveal}
           className={`ex-feedback ${chunk.every((w) => rightOf(w.id) === w.id) ? 'is-ok' : 'is-wrong'}`}
           role="status"
         >
