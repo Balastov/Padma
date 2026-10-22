@@ -1,6 +1,7 @@
 import type { WordStatus, VocabWord } from './types'
 import { getCachedCatalog } from './catalogStore'
 import { reportLexiconAnswer } from './lexicon'
+import type { AnswerMeta } from './lexicon'
 
 const KEY = 'padma-word-progress'
 
@@ -35,8 +36,14 @@ export function setWordStatus(wordId: string, status: WordStatus) {
   save(cache)
 }
 
-export function bumpWordFromAnswer(wordId: string, correct: boolean) {
-  reportLexiconAnswer(wordId, correct)
+// Dictionary words (lx:) are tracked on the server; local steps remain for
+// the teacher's word bank.
+export function bumpWordFromAnswer(
+  wordId: string,
+  correct: boolean,
+  meta: AnswerMeta,
+) {
+  reportLexiconAnswer(wordId, correct, meta)
   const cur = getWordStatus(wordId)
   if (!correct) {
     setWordStatus(wordId, cur === 'new' ? 'learning' : 'reviewing')
@@ -45,16 +52,6 @@ export function bumpWordFromAnswer(wordId: string, correct: boolean) {
   if (cur === 'new') setWordStatus(wordId, 'learning')
   else if (cur === 'learning') setWordStatus(wordId, 'reviewing')
   else if (cur === 'reviewing') setWordStatus(wordId, 'mastered')
-}
-
-export function progressCounts() {
-  const values = Object.values(cache)
-  return {
-    mastered: values.filter((s) => s === 'mastered').length,
-    reviewing: values.filter((s) => s === 'reviewing').length,
-    learning: values.filter((s) => s === 'learning').length,
-    neu: values.filter((s) => s === 'new').length,
-  }
 }
 
 export function statusLabel(status: WordStatus) {

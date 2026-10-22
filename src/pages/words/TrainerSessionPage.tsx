@@ -34,6 +34,7 @@ import {
   type TrainerSession,
 } from '../../student/sessionStore'
 import { bumpWordFromAnswer } from '../../student/progressStore'
+import { answersSent, fetchMyMetrics } from '../../student/lexicon'
 import { WordAudioButton } from './WordAudioButton'
 import {
   AssembleFormat,
@@ -94,7 +95,16 @@ export default function TrainerSessionPage() {
   function record(results: GameResult[]) {
     const { session, elapsed } = latest.current
     if (!session || !results.length) return
-    for (const r of results) bumpWordFromAnswer(r.wordId, r.correct)
+    for (const r of results)
+      bumpWordFromAnswer(r.wordId, r.correct, {
+        format: session.exerciseType,
+        sessionId: session.id,
+        sourceType: session.sourceType,
+        sourceId: session.sourceId,
+        sourceLabel: session.sourceLabel,
+        skipped: r.skipped,
+        hinted: r.hinted,
+      })
     const answers = [
       ...session.answers,
       ...results.map((r) => ({
@@ -126,8 +136,8 @@ export default function TrainerSessionPage() {
     })
   }
 
-  const answer = (correct: boolean, skipped = false) =>
-    current && record([{ wordId: current.id, correct, skipped }])
+  const answer = (correct: boolean, skipped = false, hinted = false) =>
+    current && record([{ wordId: current.id, correct, skipped, hinted }])
 
   // Leaving keeps the attempt only for homework tied to a course lesson;
   // otherwise the timer and answers start over next time.
@@ -189,7 +199,7 @@ export default function TrainerSessionPage() {
           type={session.exerciseType}
           wordId={current.id}
           words={words}
-          onAnswer={(correct) => answer(correct)}
+          onAnswer={(correct, hinted) => answer(correct, false, hinted)}
           onSkip={() => answer(false, true)}
           onAnswers={record}
           onActive={setActiveIds}
@@ -279,7 +289,7 @@ function Exercise({
   type: TrainerSession['exerciseType']
   wordId: string
   words: VocabWord[]
-  onAnswer: (correct: boolean) => void
+  onAnswer: (correct: boolean, hinted?: boolean) => void
   onSkip: () => void
   onAnswers: (results: GameResult[]) => void
   onActive: (ids: string[]) => void
@@ -349,7 +359,8 @@ function Exercise({
   )
 }
 
-function streakDays() {
+// Fallback while the server streak loads or for words outside the dictionary.
+function localStreak() {
   const days = new Set(practiceDays())
   const day = new Date()
   if (!days.has(localDay(day))) day.setDate(day.getDate() - 1)
@@ -366,9 +377,30 @@ const plural = (n: number, forms: [string, string, string]) => {
   return forms[tail === 1 ? 0 : tail >= 2 && tail <= 4 ? 1 : 2]
 }
 
+// The finished session already counts for today, even if its last answers
+// are still on their way to the server.
+function useServerStreak() {
+  const [streak, setStreak] = useState(localStreak)
+  useEffect(() => {
+    let active = true
+    answersSent()
+      .then(() => fetchMyMetrics())
+      .then((m) => {
+        if (active)
+          setStreak(m.streak.today ? m.streak.current : m.streak.current + 1)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+  return streak
+}
+
 export function TrainerResultPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  const streak = useServerStreak()
   const session = getSession(sessionId || '')
   if (!session) return <p className="empty-state">Результат не найден</p>
   if (session.words) registerWords(session.words)
@@ -382,7 +414,6 @@ export function TrainerResultPage() {
     .filter((w): w is NonNullable<typeof w> => Boolean(w))
   const minutes = Math.floor(session.elapsedSec / 60)
   const seconds = session.elapsedSec % 60
-  const streak = streakDays()
   const verdict =
     pct >= 80
       ? ['Отличный результат!', 'Вы уверенно справились с тренировкой.']

@@ -1,5 +1,5 @@
-import { api } from '../api'
-import type { VocabWord, WordStatus } from './types'
+import { api, ApiError } from '../api'
+import type { ExerciseType, VocabWord, WordStatus } from './types'
 
 // Textbook dictionary for students (/api/lexicon/me/*). Words enter the
 // trainer as VocabWord with ids "lx:<termId>" so they never clash with the
@@ -110,24 +110,117 @@ export const searchTerms = (q: string) =>
     `/lexicon/search?limit=12&q=${encodeURIComponent(q)}`,
   ).then((r) => r.items)
 
-// Trainer answers are sent in small batches; a failed send is retried with
-// the next answer.
-let queue: { termId: string; correct: boolean }[] = []
+// Trainer answers are sent in small batches. Each answer has its own id, so
+// a resend after a network error counts once.
+export type AnswerMeta = {
+  format: ExerciseType
+  sessionId: string
+  sourceType: string
+  sourceId: string
+  sourceLabel: string
+  skipped?: boolean
+  hinted?: boolean
+}
+type Attempt = AnswerMeta & {
+  id: string
+  termId: string
+  correct: boolean
+  at: string
+}
+let queue: Attempt[] = []
 let timer = 0
+let sending = false
 function flush() {
   timer = 0
-  if (!queue.length) return
+  if (!queue.length || sending) return
+  sending = true
   const batch = queue.slice(0, 200)
-  queue = queue.slice(batch.length)
-  api('/lexicon/me/progress', 'POST', { results: batch }).catch(() => {
-    queue = [...batch, ...queue]
-  })
+  const drop = () => {
+    const sent = new Set(batch.map((a) => a.id))
+    queue = queue.filter((a) => !sent.has(a.id))
+  }
+  api('/lexicon/me/progress', 'POST', { results: batch })
+    .then(drop)
+    .catch((e) => {
+      // A rejected batch (words gone from the dictionary) is not retried;
+      // network errors keep it for the next answer.
+      if (e instanceof ApiError && e.status === 400) drop()
+    })
+    .finally(() => {
+      sending = false
+    })
 }
-export function reportLexiconAnswer(wordId: string, correct: boolean) {
+export function reportLexiconAnswer(
+  wordId: string,
+  correct: boolean,
+  meta: AnswerMeta,
+) {
   if (!isLexiconWordId(wordId)) return
-  queue.push({ termId: wordId.slice(PREFIX.length), correct })
+  queue.push({
+    ...meta,
+    id: crypto.randomUUID(),
+    termId: wordId.slice(PREFIX.length),
+    correct,
+    at: new Date().toISOString(),
+  })
   if (!timer) timer = window.setTimeout(flush, 400)
 }
+/** Waits (up to ~3 s) until the answers given so far reach the server. */
+export async function answersSent() {
+  for (let i = 0; i < 20 && queue.length; i++) {
+    if (!sending && !timer) flush()
+    await new Promise((r) => setTimeout(r, 150))
+  }
+}
+
+export type SkillKey = 'comprehension' | 'recall' | 'listening' | 'writing'
+export type SkillSuccess = {
+  value: number | null
+  words: number
+  attempts: number
+  lowSample: boolean
+}
+export type WordMetrics = {
+  timeZone: string
+  today: string
+  from: string
+  days: number
+  words: { mastered: number; reviewing: number; learning: number }
+  newWords: number
+  streak: { current: number; today: boolean }
+  activity: { day: string; attempts: number; words: number }[]
+  skills: Record<SkillKey, SkillSuccess>
+  revisit: {
+    id: string
+    term: string
+    translation: string
+    transcription: string
+    mastery: number
+    status: WordStatus
+  }[]
+}
+export type MetricsSource = {
+  type: 'homework' | 'collection' | 'topic'
+  id: string
+  label: string
+}
+export const PERIOD_LABELS: Record<number, string> = {
+  7: 'за 7 дней',
+  28: 'за 4 недели',
+  90: 'за 3 месяца',
+}
+export const fetchMyMetrics = (days = 7) =>
+  api<WordMetrics>(`/lexicon/me/metrics?days=${days}`)
+export const fetchStudentMetrics = (
+  studentId: string,
+  days: number,
+  source: string,
+) =>
+  api<WordMetrics & { sources: MetricsSource[] }>(
+    `/lexicon/students/${encodeURIComponent(studentId)}/metrics?days=${days}${
+      source ? `&source=${encodeURIComponent(source)}` : ''
+    }`,
+  )
 
 const LEVEL_KEY = 'padma-lexicon-level'
 export function savedLevel() {

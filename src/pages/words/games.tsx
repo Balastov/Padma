@@ -26,7 +26,12 @@ import {
 import './exercises.css'
 import './games.css'
 
-export type GameResult = { wordId: string; correct: boolean; skipped?: boolean }
+export type GameResult = {
+  wordId: string
+  correct: boolean
+  skipped?: boolean
+  hinted?: boolean
+}
 
 const clock = (sec: number) =>
   `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
@@ -111,7 +116,7 @@ export function FindWordFormat({
   onPenalty,
 }: {
   word: VocabWord
-  onAnswer: (correct: boolean) => void
+  onAnswer: (correct: boolean, hinted: boolean) => void
   onSkip: () => void
   onPenalty: (seconds: number) => void
 }) {
@@ -233,7 +238,7 @@ export function FindWordFormat({
             </button>
           </>
         ) : (
-          <button type="button" className="button-primary" onClick={() => onAnswer(result)}>
+          <button type="button" className="button-primary" onClick={() => onAnswer(result, hint)}>
             Дальше <ArrowRight size={18} />
           </button>
         )}

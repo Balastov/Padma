@@ -39,7 +39,7 @@ import LessonWordsManagePage from './teacher/lexicon/LessonWordsManagePage'
 import CollectionsManagePage from './teacher/lexicon/CollectionsManagePage'
 import WordEditPage from './teacher/lexicon/WordEditPage'
 import TrainerAssignPage from './teacher/lexicon/TrainerAssignPage'
-import ProgressStubPage from './teacher/lexicon/ProgressStubPage'
+import StudentProgressPage from './teacher/lexicon/StudentProgressPage'
 import '../styles/workspace.css'
 
 type Props = {
@@ -380,7 +380,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               <Route
                 path="progress"
                 element={
-                  <ProgressStubPage
+                  <StudentProgressPage
                     students={
                       isManager(user)
                         ? students

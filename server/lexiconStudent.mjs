@@ -1,4 +1,11 @@
 import { clean } from './lexicon.mjs'
+import {
+  MASTERED_AT,
+  initLexiconMetrics,
+  parseAttempts,
+  recordAttempts,
+  statusOf,
+} from './lexiconMetrics.mjs'
 
 // Student view of the textbook dictionary («Мои слова → Словарь → Темы»):
 // every topic is open to every signed-in user; progress is kept per user.
@@ -6,8 +13,6 @@ import { clean } from './lexicon.mjs'
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
 }
-// Share of a word counted as learned, for topic/subtopic percentages.
-const WEIGHT = { new: 0, learning: 1 / 3, reviewing: 2 / 3, mastered: 1 }
 // Placeholder sentences of the original master table, not real examples.
 const TEMPLATE_SENTENCE =
   /^(I heard|We practised|She wrote|The teacher explained|We used|He remembered)\b.*"/
@@ -25,24 +30,7 @@ export function initLexiconStudent(db) {
     updated TEXT NOT NULL,
     PRIMARY KEY (userId, format)
   )`)
-  db.exec(`CREATE TABLE IF NOT EXISTS lexicon_progress (
-    userId TEXT NOT NULL REFERENCES users(id),
-    termId TEXT NOT NULL,
-    status TEXT NOT NULL,
-    correct INTEGER NOT NULL DEFAULT 0,
-    wrong INTEGER NOT NULL DEFAULT 0,
-    updated TEXT NOT NULL,
-    PRIMARY KEY (userId, termId)
-  )`)
-}
-
-// Same steps as the trainer: a correct answer moves the word one step up,
-// a mistake sends it back to learning/reviewing.
-export function nextStatus(current, correct) {
-  if (!correct) return current === 'new' ? 'learning' : 'reviewing'
-  if (current === 'new') return 'learning'
-  if (current === 'learning') return 'reviewing'
-  return 'mastered'
+  initLexiconMetrics(db)
 }
 
 function bookFilter(params) {
@@ -57,22 +45,25 @@ function bookFilter(params) {
   ].slice(0, 20)
 }
 
-const statusesOf = (db, userId) =>
+// Word states of a user: termId → { status, mastery }.
+const statesOf = (db, userId) =>
   new Map(
     db
-      .prepare('SELECT termId, status FROM lexicon_progress WHERE userId=?')
+      .prepare('SELECT termId, mastery FROM lexicon_progress WHERE userId=?')
       .all(userId)
-      .map((r) => [r.termId, r.status]),
+      .map((r) => [r.termId, { status: statusOf(r), mastery: r.mastery }]),
   )
+const statusIn = (states, id) => states.get(id)?.status || 'new'
 
-function progressOf(ids, statuses) {
+// Percent of a topic: Mastery of its words, a mastered word counts in full.
+function progressOf(ids, states) {
   const total = ids.length
   let score = 0
   let mastered = 0
   for (const id of ids) {
-    const status = statuses.get(id) || 'new'
-    score += WEIGHT[status]
-    if (status === 'mastered') mastered++
+    const state = states.get(id)
+    score += Math.min(1, (state?.mastery || 0) / MASTERED_AT)
+    if (state?.status === 'mastered') mastered++
   }
   return {
     total,
@@ -134,7 +125,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
 
   if (path === '/api/lexicon/me/topics' && req.method === 'GET') {
     const books = bookFilter(params)
-    const statuses = statusesOf(db, user.id)
+    const statuses = statesOf(db, user.id)
     const topics = db
       .prepare(
         `SELECT * FROM vocab_topics WHERE archived = 0
@@ -165,7 +156,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
       .get(decodeURIComponent(topicMatch[1]))
     if (!topic) fail(404, 'Тема не найдена')
     const books = bookFilter(params)
-    const statuses = statusesOf(db, user.id)
+    const statuses = statesOf(db, user.id)
     const subtopics = visibleSubtopics(db, topic.id, books)
       .map((s) => {
         const ids = subtopicTermIds(db, s.id)
@@ -198,7 +189,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
       )
       .get(decodeURIComponent(subMatch[1]))
     if (!sub) fail(404, 'Подтема не найдена')
-    const statuses = statusesOf(db, user.id)
+    const statuses = statesOf(db, user.id)
     // Unit subtopics show the unit's occurrence; teacher-made ones the first.
     const words = db
       .prepare(
@@ -231,7 +222,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
           pos: w.pos || '',
           category: w.category || '',
           level: w.level || '',
-          status: statuses.get(w.id) || 'new',
+          status: statusIn(statuses, w.id),
         }
       })
     send(200, {
@@ -270,7 +261,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
       .prepare('SELECT id, title FROM homework WHERE id = ? AND studentId = ?')
       .get(decodeURIComponent(hwMatch[1]), user.id)
     if (!hw) fail(404, 'Задание не найдено')
-    const statuses = statusesOf(db, user.id)
+    const statuses = statesOf(db, user.id)
     // The assigned snapshot wins; examples come from the dictionary.
     const words = db
       .prepare(
@@ -296,7 +287,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
           pos: w.pos || '',
           category: w.category || '',
           level: w.level || '',
-          status: statuses.get(w.id) || 'new',
+          status: statusIn(statuses, w.id),
         }
       })
     send(200, { ...hw, words })
@@ -342,15 +333,11 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
     return true
   }
 
+  // Trainer answers: one attempt per answered exercise (lexiconMetrics.mjs).
   if (path === '/api/lexicon/me/progress' && req.method === 'POST') {
-    const data = await body(req, 50000)
-    const results = Array.isArray(data.results) ? data.results : []
-    if (!results.length || results.length > 200)
-      fail(400, 'Передайте от 1 до 200 результатов')
-    for (const r of results)
-      if (typeof r?.termId !== 'string' || typeof r.correct !== 'boolean')
-        fail(400, 'Некорректный результат')
-    const ids = [...new Set(results.map((r) => r.termId))]
+    const data = await body(req, 100000)
+    const attempts = parseAttempts(data.results)
+    const ids = [...new Set(attempts.map((a) => a.termId))]
     const known = new Set(
       db
         .prepare(
@@ -360,41 +347,8 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
         .map((r) => r.id),
     )
     // Homework keeps a snapshot, so a word may be gone from the dictionary.
-    const accepted = results.filter((r) => known.has(r.termId))
-    if (!accepted.length) fail(400, 'Слова не найдены')
-    const statuses = statusesOf(db, user.id)
-    const now = new Date().toISOString()
-    const upsert = db.prepare(
-      `INSERT INTO lexicon_progress (userId, termId, status, correct, wrong, updated)
-       VALUES (?,?,?,?,?,?)
-       ON CONFLICT(userId, termId) DO UPDATE SET status=excluded.status,
-         correct=correct+excluded.correct, wrong=wrong+excluded.wrong,
-         updated=excluded.updated`,
-    )
-    db.exec('BEGIN IMMEDIATE')
-    try {
-      for (const r of accepted) {
-        const status = nextStatus(statuses.get(r.termId) || 'new', r.correct)
-        statuses.set(r.termId, status)
-        upsert.run(
-          user.id,
-          r.termId,
-          status,
-          r.correct ? 1 : 0,
-          r.correct ? 0 : 1,
-          now,
-        )
-      }
-      db.exec('COMMIT')
-    } catch (error) {
-      db.exec('ROLLBACK')
-      throw error
-    }
-    send(200, {
-      statuses: Object.fromEntries(
-        [...known].map((id) => [id, statuses.get(id)]),
-      ),
-    })
+    if (!known.size) fail(400, 'Слова не найдены')
+    send(200, { statuses: recordAttempts(db, user, attempts, known) })
     return true
   }
 

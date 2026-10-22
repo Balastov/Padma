@@ -9,7 +9,6 @@ import { hashPassword } from './store.mjs'
 import { readXlsx, readXlsxSheets } from './xlsx.mjs'
 import { importLexicon } from './lexicon.mjs'
 import { importBook } from './lexiconBook.mjs'
-import { nextStatus } from './lexiconStudent.mjs'
 import { buildXlsx } from './testXlsx.mjs'
 
 const MASTER = [
@@ -26,15 +25,6 @@ const ELEMENTARY = [
   ['People', '1', 'The family', 'Слово', 'n', 'uncle', '[ˈʌŋkl]', 'дядя', 'My uncle is a doctor.', 'Мой дядя врач.'],
   ['At home', '2', 'In the kitchen', 'Слово', 'n', 'kitchen', '[ˈkɪtʃɪn]', 'кухня', 'The kitchen is small.', 'Кухня маленькая.'],
 ]
-
-test('status steps follow the trainer', () => {
-  assert.equal(nextStatus('new', true), 'learning')
-  assert.equal(nextStatus('learning', true), 'reviewing')
-  assert.equal(nextStatus('reviewing', true), 'mastered')
-  assert.equal(nextStatus('mastered', true), 'mastered')
-  assert.equal(nextStatus('new', false), 'learning')
-  assert.equal(nextStatus('mastered', false), 'reviewing')
-})
 
 test('student dictionary: topics, levels, subtopic words, progress', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'padma-student-lexicon-'))
@@ -164,7 +154,7 @@ test('student dictionary: topics, levels, subtopic words, progress', async () =>
     assert.equal(friends.body.words[0].sentence, '')
     assert.equal(friends.body.words[0].level, 'A2-B1')
 
-    // Progress: validation, steps, per-user isolation.
+    // Progress: validation, Mastery statuses, per-user isolation.
     for (const bad of [{}, { results: [] }, { results: [{ termId: 'nope', correct: true }] }, { results: [{ termId: termId('aunt'), correct: 'yes' }] }])
       assert.equal((await request('/lexicon/me/progress', 'POST', bad, anna)).status, 400)
     const aunt = termId('aunt')
@@ -173,22 +163,27 @@ test('student dictionary: topics, levels, subtopic words, progress', async () =>
       'POST',
       {
         results: [
-          { termId: aunt, correct: true },
-          { termId: aunt, correct: true },
-          { termId: aunt, correct: true },
-          { termId: termId('uncle'), correct: false },
+          { termId: aunt, correct: true, format: 'assemble' },
+          { termId: aunt, correct: true, format: 'assemble' },
+          { termId: aunt, correct: true, format: 'assemble' },
+          { termId: termId('uncle'), correct: false, format: 'choose-translation' },
         ],
       },
       anna,
     )
+    // Three answers on one day stop at the first stage (40).
     assert.deepEqual(saved.body.statuses, {
-      [aunt]: 'mastered',
+      [aunt]: 'reviewing',
       [termId('uncle')]: 'learning',
     })
+    const early = await request(`/lexicon/me/topics/${people.id}`, 'GET', undefined, anna)
+    // 40/90 of one word out of two.
+    assert.deepEqual(early.body.subtopics[0].progress, { total: 2, mastered: 0, percent: 22 })
+    db.prepare('UPDATE lexicon_progress SET mastery = 95 WHERE userId=? AND termId=?').run('anna', aunt)
     const after = await request(`/lexicon/me/topics/${people.id}`, 'GET', undefined, anna)
-    // (1 + 1/3) / 2 words in the unit subtopic; (1 + 1/3 + 0) / 3 in the topic.
-    assert.deepEqual(after.body.subtopics[0].progress, { total: 2, mastered: 1, percent: 67 })
-    assert.deepEqual(after.body.progress, { total: 3, mastered: 1, percent: 44 })
+    // A mastered word counts in full: 1/2 in the subtopic, 1/3 in the topic.
+    assert.deepEqual(after.body.subtopics[0].progress, { total: 2, mastered: 1, percent: 50 })
+    assert.deepEqual(after.body.progress, { total: 3, mastered: 1, percent: 33 })
     const wordsAfter = await request(`/lexicon/me/subtopics/${family.id}`, 'GET', undefined, anna)
     assert.deepEqual(wordsAfter.body.words.map((w) => w.status), ['mastered', 'learning'])
     const borisView = await request(`/lexicon/me/topics/${people.id}`, 'GET', undefined, boris)
@@ -202,7 +197,12 @@ test('student dictionary: topics, levels, subtopic words, progress', async () =>
     const mixed = await request(
       '/lexicon/me/progress',
       'POST',
-      { results: [{ termId: 'gone', correct: true }, { termId: termId('kitchen'), correct: true }] },
+      {
+        results: [
+          { termId: 'gone', correct: true, format: 'assemble' },
+          { termId: termId('kitchen'), correct: true, format: 'assemble' },
+        ],
+      },
       anna,
     )
     assert.deepEqual(mixed.body.statuses, { [termId('kitchen')]: 'learning' })
