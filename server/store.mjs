@@ -50,6 +50,16 @@ export function openStore(path) {
       `ALTER TABLE users ADD COLUMN notificationsEnabled INTEGER NOT NULL DEFAULT 0`,
     )
   migrateEmailUniqueness(db)
+  // After the email migration: it rebuilds the table with a fixed column list.
+  if (
+    !db
+      .prepare('PRAGMA table_info(users)')
+      .all()
+      .some((column) => column.name === 'timeZone')
+  )
+    db.exec(
+      `ALTER TABLE users ADD COLUMN timeZone TEXT NOT NULL DEFAULT 'Europe/Moscow'`,
+    )
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique
      ON users(email COLLATE NOCASE) WHERE email != ''`,

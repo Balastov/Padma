@@ -29,12 +29,19 @@ import {
   isManagerRoles,
 } from './store.mjs'
 import { loadVapidKeys, sendPushToUser } from './push.mjs'
+import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
 }
 const text = (value, max = 200) =>
   typeof value === 'string' ? value.trim().slice(0, max) : ''
+// Absent in the request keeps the current zone.
+function timeZoneOf(data, current = DEFAULT_TIME_ZONE) {
+  if (data.timeZone === undefined) return current
+  if (!isTimeZone(data.timeZone)) fail(400, 'Выберите часовой пояс')
+  return data.timeZone
+}
 const passwordValid = (value) =>
   typeof value === 'string' && value.length >= 8 && value.length <= 128
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -251,6 +258,7 @@ export function createApp({
             !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo))
         )
           fail(400, 'Фото: JPG, PNG или WebP до 2 МБ')
+        const timeZone = timeZoneOf(data, user.timeZone)
         if (data.password) {
           if (
             !passwordValid(data.password) ||
@@ -330,6 +338,10 @@ export function createApp({
               user.id,
             )
           }
+          db.prepare('UPDATE users SET timeZone=? WHERE id=?').run(
+            timeZone,
+            user.id,
+          )
         } catch (error) {
           if (String(error).includes('UNIQUE'))
             fail(
@@ -482,6 +494,7 @@ export function createApp({
         )
           fail(400, 'Фото: JPG, PNG или WebP')
         if (photo.length > 2900000) fail(400, 'Фото слишком большое')
+        const timeZone = timeZoneOf(data, old?.timeZone)
         if ((!old || data.password) && !passwordValid(data.password))
           fail(400, 'Пароль должен содержать от 8 до 128 символов')
         const hash = data.password
@@ -521,6 +534,10 @@ export function createApp({
                 id,
               )
             }
+            db.prepare('UPDATE users SET timeZone=? WHERE id=?').run(
+              timeZone,
+              id,
+            )
             if (
               data.password ||
               JSON.stringify(old.roles) !== JSON.stringify(roles)
@@ -533,7 +550,7 @@ export function createApp({
                 ? 1
                 : 0
             db.prepare(
-              'INSERT INTO users (id,name,surname,email,phone,password,roles,teacherId,photo,notificationsEnabled) VALUES (?,?,?,?,?,?,?,?,?,?)',
+              'INSERT INTO users (id,name,surname,email,phone,password,roles,teacherId,photo,notificationsEnabled,timeZone) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
             ).run(
               id,
               name,
@@ -545,6 +562,7 @@ export function createApp({
               teacherId,
               photo,
               notificationsEnabled,
+              timeZone,
             )
           }
         } catch (error) {

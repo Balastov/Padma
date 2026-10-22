@@ -198,6 +198,48 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
       teacher,
     )
     assert.equal(created.status, 201)
+    assert.equal(created.body.timeZone, 'Europe/Moscow')
+    const studentProfile = {
+      name: 'student',
+      email: 'student@example.test',
+      phone: '',
+      photo: '',
+    }
+    const zoned = await request(
+      '/profile',
+      'PATCH',
+      { ...studentProfile, timeZone: 'Asia/Yekaterinburg' },
+      student,
+    )
+    assert.equal(zoned.status, 200)
+    assert.equal(zoned.body.timeZone, 'Asia/Yekaterinburg')
+    for (const timeZone of ['Mars/Olympus', '', 'Europe/Moscow; DROP', 3])
+      assert.equal(
+        (
+          await request(
+            '/profile',
+            'PATCH',
+            { ...studentProfile, timeZone },
+            student,
+          )
+        ).status,
+        400,
+      )
+    const keptZone = await request('/profile', 'PATCH', studentProfile, student)
+    assert.equal(keptZone.body.timeZone, 'Asia/Yekaterinburg')
+    const teacherZoned = await request(
+      '/users/student',
+      'PATCH',
+      {
+        ...studentProfile,
+        roles: ['student'],
+        teacherId: 'teacher',
+        timeZone: 'Asia/Vladivostok',
+      },
+      teacher,
+    )
+    assert.equal(teacherZoned.status, 200)
+    assert.equal(teacherZoned.body.timeZone, 'Asia/Vladivostok')
     const phoneOnly = await request(
       '/users',
       'POST',

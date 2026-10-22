@@ -21,6 +21,11 @@ import {
   normalizePhone,
 } from '../phone'
 import { syncPushWithPreference } from '../notifications'
+import {
+  DEFAULT_TIME_ZONE,
+  deviceTimeZone,
+  timeZoneOptions,
+} from '../timeZones'
 
 type Props = {
   user: User
@@ -247,6 +252,8 @@ function UserEditor({
     (role) => role === 'owner' || role === 'admin',
   )
   const notificationsEditable = editable && (!targetIsManager || manager)
+  const timeZone = form.timeZone || DEFAULT_TIME_ZONE
+  const device = deviceTimeZone()
   const field = (key: string, value: unknown) =>
     setForm((prev) => ({ ...prev, [key]: value }))
   const phoneReady = foreignPhone
@@ -477,6 +484,36 @@ function UserEditor({
               У меня иностранный номер телефона
             </span>
           </label>
+          {form.roles.includes('student') && (
+            <label className="field">
+              <span>Часовой пояс</span>
+              <select
+                value={timeZone}
+                onChange={(e) => field('timeZone', e.target.value)}
+              >
+                {timeZoneOptions(timeZone).map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.label}
+                  </option>
+                ))}
+              </select>
+              <small>
+                По нему считаются дни практики и серия в прогрессе слов.
+                {profile && device && device !== timeZone && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => field('timeZone', device)}
+                    >
+                      Как на этом устройстве
+                    </button>
+                  </>
+                )}
+              </small>
+            </label>
+          )}
           <label className="field field--check">
             <span className="field__check">
               <input

@@ -9,6 +9,8 @@ export type User = {
   teacherId: string | null
   photo: string
   notificationsEnabled?: boolean
+  /** IANA zone for progress days, Europe/Moscow by default. */
+  timeZone?: string
 }
 export type Teacher = Pick<User, 'id' | 'name' | 'surname' | 'photo'>
 export type Lesson = {
