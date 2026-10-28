@@ -22,7 +22,7 @@ server {
     index index.html;
     access_log /var/log/nginx/padma.access.log;
     error_log /var/log/nginx/padma.error.log;
-    client_max_body_size 15m;
+    client_max_body_size 25m;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy same-origin always;
     add_header X-Frame-Options DENY always;

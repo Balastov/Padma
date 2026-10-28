@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, MessageCircle, Send } from 'lucide-react'
 import { api, fullName } from '../api'
 import type { Message, User } from '../api'
+import { uploadAll } from '../files'
+import { FileLinks, FilePicker, PendingFiles } from './Attachments'
 import Avatar from './Avatar'
 
 export default function Messages({ user }: { user: User }) {
@@ -10,6 +12,7 @@ export default function Messages({ user }: { user: User }) {
   const [selected, setSelected] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
+  const [attached, setAttached] = useState<File[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loadingPeers, setLoadingPeers] = useState(true)
@@ -69,11 +72,13 @@ export default function Messages({ user }: { user: User }) {
 
   async function send(e: React.FormEvent) {
     e.preventDefault()
-    if (!draft.trim() || !peerId) return
+    if ((!draft.trim() && !attached.length) || !peerId) return
     setBusy(true)
     try {
-      await api('/messages/' + peerId, 'POST', { text: draft })
+      const fileIds = await uploadAll(attached)
+      await api('/messages/' + peerId, 'POST', { text: draft, fileIds })
       setDraft('')
+      setAttached([])
       setMessages(await api<Message[]>('/messages/' + peerId))
       setError('')
     } catch (err) {
@@ -118,6 +123,7 @@ export default function Messages({ user }: { user: User }) {
                   setMessages([])
                   setError('')
                   setDraft('')
+                  setAttached([])
                 }}
               >
                 {peers.map((p) => (
@@ -143,7 +149,8 @@ export default function Messages({ user }: { user: User }) {
                       key={m.id}
                       className={`message${m.senderId === user.id ? ' message--own' : ''}`}
                     >
-                      <p>{m.text}</p>
+                      {m.text && <p>{m.text}</p>}
+                      <FileLinks files={m.files} />
                       <time>
                         {new Date(m.created).toLocaleString('ru-RU', {
                           day: 'numeric',
@@ -165,7 +172,19 @@ export default function Messages({ user }: { user: User }) {
                   </div>
                 )}
               </div>
+              <PendingFiles
+                files={attached}
+                onChange={setAttached}
+                disabled={busy}
+              />
               <form className="messages__composer" onSubmit={send}>
+                <FilePicker
+                  compact
+                  files={attached}
+                  onChange={setAttached}
+                  onError={setError}
+                  disabled={busy}
+                />
                 <input
                   aria-label="Сообщение"
                   placeholder="Написать сообщение…"
@@ -176,7 +195,7 @@ export default function Messages({ user }: { user: User }) {
                 <button
                   type="submit"
                   className="button-primary icon-button"
-                  disabled={busy || !draft.trim()}
+                  disabled={busy || (!draft.trim() && !attached.length)}
                   aria-label="Отправить сообщение"
                 >
                   <Send size={19} />

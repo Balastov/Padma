@@ -1,6 +1,8 @@
 [Unit]
 Description=Padma learning platform
 After=network.target
+# Wait for the attachments disk if it is mounted there (no-op otherwise).
+RequiresMountsFor=/var/lib/padma/files
 
 [Service]
 Type=simple

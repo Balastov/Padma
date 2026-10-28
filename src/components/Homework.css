@@ -80,16 +80,6 @@
 .hw__version p {
   margin: 0;
 }
-.hw__file {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-wrap: anywhere;
-  font-size: 0.85rem;
-}
-.hw__file svg {
-  flex-shrink: 0;
-}
 .hw__actions {
   display: flex;
   gap: 12px;

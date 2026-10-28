@@ -8,7 +8,7 @@
 - Backend: `padma.service`, пользователь `padma`, слушает только `127.0.0.1:3001`.
 - Релизы: `/var/www/padma/releases/<UTC>-<commit>`; активный — `/var/www/padma/current`.
 - Nginx раздаёт `current/dist`, запросы `/api/` передаёт backend. HTTPS-сертификат и настройки соседних сайтов сохраняются.
-- Постоянная база и вложения: `/var/lib/padma/padma.sqlite`, доступны только системному пользователю Padma и root.
+- Постоянная база: `/var/lib/padma/padma.sqlite`; файлы ДЗ, чата и библиотеки: `/var/lib/padma/files` (`PADMA_FILES`). Доступны только системному пользователю Padma и root.
 - Окружение службы: `/etc/padma/padma.env`. Безопасный образец — `deploy/padma.env.example`.
 - Проверка работы: GET `/api/health`. Не выдаёт данные пользователей.
 - Журнал backend: `sudo journalctl -u padma`. Nginx: `/var/log/nginx/padma.access.log`, `padma.error.log`.
@@ -85,3 +85,24 @@ sudo systemctl list-timers padma-backup.timer
 ## Проверка публикации
 
 После активации проверить `/api/health`, вход обеих начальных учётных записей, Secure/HttpOnly cookies, защищённый API, загрузку JS/CSS и соседний сайт mispring.ru. Пароли в вывод проверки не включать.
+
+## Диск для файлов (HDD)
+
+Файлы пишутся в `/var/lib/padma/files`. Отдельный диск подключается в эту папку, тогда `padma.env` менять не нужно. Служба ждёт этот диск (`RequiresMountsFor` в `padma.service`): если он не подключился, Padma не запустится, а не начнёт писать файлы на системный диск. Nginx пропускает загрузки до 25 МБ (файл до 20 МБ).
+
+Диск монтируется в общую папку `/srv/hdd`, чтобы им могли пользоваться и другие проекты, а папка Padma на нём подключается через bind:
+
+1. Найти диск: `lsblk -f`. Дополнительный диск из панели cloud.ru — `vdb` (или `sdb`) нужного размера, без разделов и точки монтирования.
+2. Если он новый, создать файловую систему (стирает диск): `sudo mkfs.ext4 -L hdd /dev/vdb`.
+3. Смонтировать:
+   ```bash
+   sudo mkdir -p /srv/hdd
+   echo "UUID=$(sudo blkid -s UUID -o value /dev/vdb) /srv/hdd ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
+   sudo install -d -o padma -g padma -m 700 /srv/hdd/padma-files /var/lib/padma/files
+   echo "/srv/hdd/padma-files /var/lib/padma/files none bind,nofail,x-systemd.requires-mounts-for=/srv/hdd 0 0" | sudo tee -a /etc/fstab
+   sudo systemctl daemon-reload && sudo mount -a
+   findmnt /var/lib/padma/files   # SOURCE: /dev/vdb[/padma-files]
+   ```
+4. Если в `/var/lib/padma/files` уже были файлы, перед шагом 3 остановить службу, переименовать папку в `files.old`, после монтирования скопировать содержимое `sudo cp -a /var/lib/padma/files.old/. /var/lib/padma/files/`, затем `sudo systemctl restart padma`.
+
+Другому проекту — своя папка на том же диске, например `sudo install -d -o <пользователь> -g <пользователь> -m 750 /srv/hdd/<проект>`. Место на диске общее: следите за `df -h /srv/hdd`. Файлы не входят в ежедневную копию базы.

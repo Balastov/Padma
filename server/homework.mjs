@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { privileged, staff } from './store.mjs'
 import { topicTerms, subtopicTerms } from './lexicon.mjs'
+import { attachFiles, listFiles } from './files.mjs'
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
@@ -15,9 +16,6 @@ export function initHomework(db) {
   CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY, homeworkId TEXT NOT NULL REFERENCES homework(id), text TEXT NOT NULL, created TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'submitted', comment TEXT NOT NULL DEFAULT '', reviewerId TEXT REFERENCES users(id), reviewed TEXT
-  );
-  CREATE TABLE IF NOT EXISTS homework_files (
-    id TEXT PRIMARY KEY, submissionId TEXT NOT NULL REFERENCES submissions(id), name TEXT NOT NULL, data BLOB NOT NULL
   );
   CREATE TABLE IF NOT EXISTS homework_lexicon_sources (
     id INTEGER PRIMARY KEY, homeworkId TEXT NOT NULL REFERENCES homework(id),
@@ -101,10 +99,25 @@ function lexiconFromBody(db, raw) {
   if (seen.size > 2000) fail(400, 'В задании не может быть больше 2000 слов')
   return { sources, duplicates }
 }
+const canReadStudent = (user, student) =>
+  student?.roles.includes('student') &&
+  (privileged(user) ||
+    student.id === user.id ||
+    (staff(user) && student.teacherId === user.id))
+/** File access: task files by homework id, answer files by submission id. */
+export function canReadHomework(db, user, getUser, { homeworkId, submissionId }) {
+  const item = db
+    .prepare(
+      homeworkId
+        ? 'SELECT studentId FROM homework WHERE id=?'
+        : 'SELECT h.studentId FROM homework h JOIN submissions s ON s.homeworkId=h.id WHERE s.id=?',
+    )
+    .get(homeworkId || submissionId)
+  return Boolean(item && canReadStudent(user, getUser(item.studentId)))
+}
 export async function homeworkRoute({
   path,
   req,
-  res,
   db,
   user,
   body,
@@ -112,11 +125,7 @@ export async function homeworkRoute({
   getUser,
 }) {
   if (!path.startsWith('/api/homework')) return false
-  const canRead = (student) =>
-    student?.roles.includes('student') &&
-    (privileged(user) ||
-      student.id === user.id ||
-      (staff(user) && student.teacherId === user.id))
+  const canRead = (student) => canReadStudent(user, student)
   const canManage = (student) =>
     staff(user) && (privileged(user) || student?.teacherId === user.id)
   const accessible = (id) => {
@@ -144,20 +153,14 @@ export async function homeworkRoute({
   }
   const detail = (item) => ({
     ...item,
+    files: listFiles(db, 'homework', item.id),
     lexicon: lexicon(item.id),
     submissions: db
       .prepare(
         'SELECT * FROM submissions WHERE homeworkId=? ORDER BY created,rowid',
       )
       .all(item.id)
-      .map((s) => ({
-        ...s,
-        files: db
-          .prepare(
-            'SELECT id,name,length(data) AS size FROM homework_files WHERE submissionId=?',
-          )
-          .all(s.id),
-      })),
+      .map((s) => ({ ...s, files: listFiles(db, 'submission', s.id) })),
   })
   if (path === '/api/homework' && req.method === 'GET') {
     send(
@@ -201,6 +204,7 @@ export async function homeworkRoute({
       db.prepare('INSERT INTO homework VALUES (?,?,?,?,?,?,?)').run(
         ...Object.values(item),
       )
+      attachFiles(db, user, data.fileIds, 'homework', item.id)
       const insertSource = db.prepare(
         `INSERT INTO homework_lexicon_sources
          (homeworkId, kind, refId, title, parentTitle, sortOrder) VALUES (?,?,?,?,?,?)`,
@@ -244,32 +248,11 @@ export async function homeworkRoute({
     const item = accessible(submit[1])
     if (user.id !== item.studentId)
       fail(403, 'Отправить работу может только ученик')
-    const data = await body(req, 15000000),
-      answer = clean(data.text, 10000)
-    if (!Array.isArray(data.files) || data.files.length > 5)
-      fail(400, 'Можно приложить до 5 файлов')
-    let total = 0
-    const files = data.files.map((f) => {
-      const name = clean(f?.name, 180)
-      if (
-        !name ||
-        !/\.(pdf|doc|docx|jpg|jpeg|png)$/i.test(name) ||
-        [...name].some(
-          (c) => c.charCodeAt(0) < 32 || c === '/' || c === '\\',
-        ) ||
-        typeof f.data !== 'string' ||
-        /[^A-Za-z0-9+/=]/.test(f.data)
-      )
-        fail(400, 'Допустимы PDF, DOC, DOCX, JPG и PNG')
-      const content = Buffer.from(f.data, 'base64')
-      if (content.toString('base64') !== f.data) fail(400, 'Некорректный файл')
-      total += content.length
-      if (!content.length || total > 10 * 1024 * 1024)
-        fail(400, 'Файлы должны быть непустыми, общий размер — до 10 МБ')
-      return { id: randomUUID(), name, content }
-    })
-    if (!answer && !files.length) fail(400, 'Напишите ответ или приложите файл')
-    // Recheck state after reading the upload, so concurrent submissions cannot bypass it.
+    const data = await body(req),
+      answer = clean(data.text, 10000),
+      fileIds = Array.isArray(data.fileIds) ? data.fileIds : []
+    if (!answer && !fileIds.length)
+      fail(400, 'Напишите ответ или приложите файл')
     const last = db
       .prepare(
         'SELECT status FROM submissions WHERE homeworkId=? ORDER BY created DESC,rowid DESC LIMIT 1',
@@ -283,13 +266,7 @@ export async function homeworkRoute({
       db.prepare(
         'INSERT INTO submissions (id,homeworkId,text,created) VALUES (?,?,?,?)',
       ).run(id, item.id, answer, new Date().toISOString())
-      for (const f of files)
-        db.prepare('INSERT INTO homework_files VALUES (?,?,?,?)').run(
-          f.id,
-          id,
-          f.name,
-          f.content,
-        )
+      attachFiles(db, user, fileIds, 'submission', id)
       db.exec('COMMIT')
     } catch (error) {
       db.exec('ROLLBACK')
@@ -321,25 +298,6 @@ export async function homeworkRoute({
       'UPDATE submissions SET status=?,comment=?,reviewerId=?,reviewed=? WHERE id=?',
     ).run(data.status, comment, user.id, new Date().toISOString(), last.id)
     send(200, detail(item))
-    return true
-  }
-  const download = /^\/api\/homework\/files\/([^/]+)$/.exec(path)
-  if (download && req.method === 'GET') {
-    const file = db
-      .prepare(
-        'SELECT f.*,s.homeworkId FROM homework_files f JOIN submissions s ON s.id=f.submissionId WHERE f.id=?',
-      )
-      .get(download[1])
-    if (!file) fail(404, 'Файл недоступен')
-    accessible(file.homeworkId)
-    res.writeHead(200, {
-      'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="homework-file"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Length': file.data.length,
-    })
-    res.end(Buffer.from(file.data))
     return true
   }
   fail(404, 'Не найдено')

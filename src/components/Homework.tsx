@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BookOpen, Download, Volume2 } from 'lucide-react'
+import { BookOpen, Volume2 } from 'lucide-react'
 import { api, friendlyDate, fullName } from '../api'
 import type { User } from '../api'
+import { uploadAll } from '../files'
+import type { StoredFile } from '../files'
+import { FileLinks, FilePicker } from './Attachments'
 import HomeworkLexicon from './HomeworkLexicon'
 import { sourceLabel, wordsCount } from './lexiconFormat'
 import type { LexiconSource } from './HomeworkLexicon'
@@ -15,7 +18,7 @@ type Submission = {
   created: string
   status: 'submitted' | 'returned' | 'accepted'
   comment: string
-  files: { id: string; name: string; size: number }[]
+  files: StoredFile[]
 }
 type Assignment = {
   id: string
@@ -23,6 +26,8 @@ type Assignment = {
   title: string
   description: string
   due: string
+  /** Teacher's files for the task. */
+  files: StoredFile[]
   submissions: Submission[]
   lexicon: {
     sources: {
@@ -71,6 +76,7 @@ export default function Homework({ students }: { students?: User[] }) {
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [lexicon, setLexicon] = useState<LexiconSource[]>([])
+  const [taskFiles, setTaskFiles] = useState<File[]>([])
   const [notice, setNotice] = useState('')
   const [studentFilter, setStudentFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<Status | ''>('')
@@ -116,6 +122,7 @@ export default function Homework({ students }: { students?: User[] }) {
     setError('')
     setNotice('')
     try {
+      const fileIds = await uploadAll(taskFiles)
       const created = await api<{ duplicatesSkipped: number }>(
         '/homework',
         'POST',
@@ -126,10 +133,12 @@ export default function Homework({ students }: { students?: User[] }) {
             id: s.id,
             termIds: s.checked,
           })),
+          fileIds,
         },
       )
       form.reset()
       setLexicon([])
+      setTaskFiles([])
       if (created.duplicatesSkipped)
         setNotice(
           `Задание выдано. Повторы исключены: ${created.duplicatesSkipped}.`,
@@ -182,6 +191,11 @@ export default function Homework({ students }: { students?: User[] }) {
                   rows={4}
                 />
               </label>
+              <FilePicker
+                files={taskFiles}
+                onChange={setTaskFiles}
+                disabled={busy}
+              />
               <label>
                 Сдать до (Москва)
                 <input type="date" name="due" />
@@ -316,30 +330,9 @@ function AssignmentCard({
     setError('')
     setBusy(true)
     try {
-      if (
-        files.length > 5 ||
-        files.reduce((sum, f) => sum + f.size, 0) > 10 * 1024 * 1024
-      )
-        throw new Error('До 5 файлов общим размером не более 10 МБ')
-      const attachments = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise<{ name: string; data: string }>((resolve, reject) => {
-              const reader = new FileReader()
-              reader.onload = () =>
-                resolve({
-                  name: file.name,
-                  data: String(reader.result).split(',')[1],
-                })
-              reader.onerror = () =>
-                reject(new Error('Не удалось прочитать файл'))
-              reader.readAsDataURL(file)
-            }),
-        ),
-      )
       await api('/homework/' + item.id + '/submit', 'POST', {
         text: answer,
-        files: attachments,
+        fileIds: await uploadAll(files),
       })
       setAnswer('')
       setFiles([])
@@ -385,6 +378,7 @@ function AssignmentCard({
         </p>
       )}
       <p className="hw__text">{item.description}</p>
+      <FileLinks files={item.files} />
       {!!item.lexicon?.words.length && (
         <details className="hw__lexicon">
           <summary>Лексика · {wordsCount(item.lexicon.words.length)}</summary>
@@ -429,19 +423,7 @@ function AssignmentCard({
               </strong>
               <small>{stamp(s.created)} · Москва</small>
               {s.text && <p className="hw__text">{s.text}</p>}
-              {s.files.map((f) => (
-                <a
-                  key={f.id}
-                  className="hw__file"
-                  href={'/api/homework/files/' + f.id}
-                  download
-                >
-                  <Download size={16} />
-                  <span>
-                    {f.name} ({Math.ceil(f.size / 1024)} КБ)
-                  </span>
-                </a>
-              ))}
+              <FileLinks files={s.files} />
               {s.comment && (
                 <p className="hw__text notice">
                   <strong>Комментарий учителя: </strong>
@@ -463,18 +445,9 @@ function AssignmentCard({
               rows={3}
             />
           </label>
-          <label>
-            Файлы ответа
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
-            />
-          </label>
+          <FilePicker files={files} onChange={setFiles} disabled={busy} />
           <small className="secondary">
-            PDF, DOC, DOCX, JPG, PNG · до 5 файлов, всего до 10 МБ. Напишите
-            ответ или приложите файл.
+            Напишите ответ или приложите файл — до 5 файлов.
           </small>
           <button
             className="button-primary"

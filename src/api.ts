@@ -1,3 +1,5 @@
+import type { StoredFile } from './files'
+
 export type Role = 'owner' | 'admin' | 'teacher' | 'student' | 'guest'
 export type User = {
   id: string
@@ -72,6 +74,19 @@ export type Message = {
   senderId: string
   text: string
   created: string
+  files?: StoredFile[]
+}
+export type LibraryItem = {
+  id: string
+  authorId: string
+  title: string
+  description: string
+  /** "all": every student of the author (whole school for an admin). */
+  audience: 'all' | 'selected'
+  created: string
+  file: StoredFile | null
+  /** Only for those who manage the material. */
+  studentIds?: string[]
 }
 export const roleNames: Record<Role, string> = {
   owner: 'Владелец',

@@ -1,5 +1,13 @@
 import { createServer } from 'node:http'
-import { initHomework, homeworkRoute } from './homework.mjs'
+import { initHomework, homeworkRoute, canReadHomework } from './homework.mjs'
+import {
+  initFiles,
+  filesRoute,
+  purgeFiles,
+  attachFiles,
+  listFiles,
+} from './files.mjs'
+import { initLibrary, libraryRoute, canSeeLibraryItem } from './library.mjs'
 import { initLessons, lessonsRoute } from './lessons.mjs'
 import { initVocab, vocabRoute } from './vocab.mjs'
 import { initLexicon, lexiconRoute } from './lexicon.mjs'
@@ -11,7 +19,7 @@ import {
   appearanceRoute,
 } from './appearance.mjs'
 import { readFile, stat } from 'node:fs/promises'
-import { resolve, extname, sep } from 'node:path'
+import { resolve, extname, sep, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes, randomUUID } from 'node:crypto'
 import {
@@ -54,6 +62,7 @@ export function createApp({
     'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3001,http://127.0.0.1:3001'
   ).split(','),
   secure = process.env.NODE_ENV === 'production',
+  filesDir = process.env.PADMA_FILES || join(dirname(dbPath), 'files'),
 } = {}) {
   const db = openStore(dbPath)
   initLessons(db)
@@ -62,6 +71,8 @@ export function createApp({
   initLexicon(db)
   initLexiconStudent(db)
   initAppearance(db)
+  initLibrary(db)
+  const store = initFiles(db, filesDir)
   const vapid = loadVapidKeys(dbPath)
   const attempts = new Map()
   const getUser = (id) =>
@@ -85,6 +96,36 @@ export function createApp({
     (privileged(user) ||
       student.teacherId === user.id ||
       student.id === user.id)
+  // A chat file is readable by whoever can read its thread.
+  const canReadThread = (viewer, key) => {
+    if (key === viewer.id) return true
+    const pair = key.split(':')
+    if (pair.length === 2 && !pair.includes(viewer.id)) return false
+    const peer = getUser(
+      pair.length === 2 ? pair.find((id) => id !== viewer.id) : key,
+    )
+    return canChatWith(viewer, peer) && messageThreadKey(viewer, peer) === key
+  }
+  store.access = {
+    homework: (viewer, id) =>
+      canReadHomework(db, viewer, getUser, { homeworkId: id }),
+    submission: (viewer, id) =>
+      canReadHomework(db, viewer, getUser, { submissionId: id }),
+    library: (viewer, id) => canSeeLibraryItem(db, viewer, getUser, id),
+    chat: (viewer, id) => {
+      const message = db
+        .prepare('SELECT threadKey FROM messages WHERE id=?')
+        .get(id)
+      return Boolean(message && canReadThread(viewer, message.threadKey))
+    },
+  }
+  const purge = () =>
+    purgeFiles(db, store).catch((error) =>
+      console.error('Не удалось удалить устаревшие файлы', error),
+    )
+  void purge()
+  const purgeTimer = setInterval(purge, 36e5)
+  purgeTimer.unref()
   const cookie = (token) =>
     `padma_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 604800 : 0}${secure ? '; Secure' : ''}`
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
@@ -223,6 +264,11 @@ export function createApp({
         return
       if (
         await lessonsRoute({ path, req, db, user, body, send, getUser })
+      )
+        return
+      if (await filesRoute({ path, req, res, db, user, store, send })) return
+      if (
+        await libraryRoute({ path, req, db, user, body, send, getUser, store })
       )
         return
       if (await vocabRoute({ path, req, res, db, user, body, send })) return
@@ -616,11 +662,14 @@ export function createApp({
               .prepare(
                 'SELECT id, studentId, senderId, text, created FROM messages WHERE threadKey=? ORDER BY created',
               )
-              .all(threadKey),
+              .all(threadKey)
+              .map((m) => ({ ...m, files: listFiles(db, 'chat', m.id) })),
           )
         const data = await body(req),
-          message = text(data.text, 2000)
-        if (!message) fail(400, 'Введите сообщение')
+          message = text(data.text, 2000),
+          fileIds = Array.isArray(data.fileIds) ? data.fileIds : []
+        if (!message && !fileIds.length)
+          fail(400, 'Введите сообщение или прикрепите файл')
         const anchorId = peer.roles.includes('student') ? peer.id : user.id
         const result = {
           id: randomUUID(),
@@ -629,24 +678,32 @@ export function createApp({
           text: message,
           created: new Date().toISOString(),
         }
-        db.prepare(
-          'INSERT INTO messages (id, studentId, senderId, text, created, threadKey) VALUES (?,?,?,?,?,?)',
-        ).run(
-          result.id,
-          result.studentId,
-          result.senderId,
-          result.text,
-          result.created,
-          threadKey,
-        )
+        db.exec('BEGIN IMMEDIATE')
+        try {
+          db.prepare(
+            'INSERT INTO messages (id, studentId, senderId, text, created, threadKey) VALUES (?,?,?,?,?,?)',
+          ).run(
+            result.id,
+            result.studentId,
+            result.senderId,
+            result.text,
+            result.created,
+            threadKey,
+          )
+          attachFiles(db, user, fileIds, 'chat', result.id)
+          db.exec('COMMIT')
+        } catch (error) {
+          db.exec('ROLLBACK')
+          throw error
+        }
         const senderName = [user.name, user.surname].filter(Boolean).join(' ')
         const openPath = staff(peer) ? '/teacher' : '/today'
         void sendPushToUser(db, peer.id, {
           title: 'Новое сообщение',
-          body: `${senderName}: ${message.slice(0, 120)}`,
+          body: `${senderName}: ${message.slice(0, 120) || 'файл'}`,
           url: openPath,
         })
-        return send(201, result)
+        return send(201, { ...result, files: listFiles(db, 'chat', result.id) })
       }
       fail(404, 'Не найдено')
     } catch (error) {
@@ -656,8 +713,11 @@ export function createApp({
       })
     }
   })
-  server.on('close', () => db.close())
-  return { server, db }
+  server.on('close', () => {
+    clearInterval(purgeTimer)
+    db.close()
+  })
+  return { server, db, store }
 }
 if (
   process.argv[1] &&

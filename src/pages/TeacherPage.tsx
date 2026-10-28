@@ -31,6 +31,7 @@ import Messages from '../components/Messages'
 import UsersPage from './UsersPage'
 import AppearanceSettings from '../components/AppearanceSettings'
 import EventPage from './EventPage'
+import TeacherLibraryPage from './teacher/TeacherLibraryPage'
 import SeriesEditPage from './SeriesEditPage'
 import LexiconLayout from './teacher/lexicon/LexiconLayout'
 import DictionaryAllPage from './teacher/lexicon/DictionaryAllPage'
@@ -394,29 +395,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
             </Route>
             <Route
               path="library"
-              element={
-                <div className="glass-panel" style={{ padding: 24 }}>
-                  <h1>Библиотека</h1>
-                  <p className="caption">
-                    Заглушка. Раздел материалов для учителя будет связан с
-                    библиотекой ученика.
-                  </p>
-                  <p
-                    aria-hidden="true"
-                    style={{
-                      marginTop: 48,
-                      textAlign: 'center',
-                      fontWeight: 800,
-                      letterSpacing: '0.2em',
-                      textTransform: 'uppercase',
-                      color: '#1a2a6e22',
-                      transform: 'rotate(-12deg)',
-                    }}
-                  >
-                    Заглушка
-                  </p>
-                </div>
-              }
+              element={<TeacherLibraryPage user={user} students={students} />}
             />
             <Route path="*" element={<Navigate to="/teacher" replace />} />
           </Routes>

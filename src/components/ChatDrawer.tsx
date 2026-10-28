@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { MessageCircle, Send, X } from 'lucide-react'
 import { api, fullName } from '../api'
 import type { Message, User } from '../api'
+import { uploadAll } from '../files'
+import { FileLinks, FilePicker, PendingFiles } from './Attachments'
 import Avatar from './Avatar'
 import './ChatDrawer.css'
 
@@ -18,6 +20,7 @@ export default function ChatDrawer({
   const [selected, setSelected] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
+  const [attached, setAttached] = useState<File[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const thread = useRef<HTMLDivElement>(null)
@@ -68,11 +71,14 @@ export default function ChatDrawer({
 
   async function send(e: React.FormEvent) {
     e.preventDefault()
-    if (!peerId || !draft.trim()) return
+    if (!peerId || (!draft.trim() && !attached.length)) return
     setBusy(true)
     try {
-      await api('/messages/' + peerId, 'POST', { text: draft.trim() })
+      const fileIds = await uploadAll(attached)
+      await api('/messages/' + peerId, 'POST', { text: draft.trim(), fileIds })
       setDraft('')
+      setAttached([])
+      setError('')
       setMessages(await api<Message[]>('/messages/' + peerId))
     } catch (err) {
       setError((err as Error).message)
@@ -109,6 +115,7 @@ export default function ChatDrawer({
               onChange={(e) => {
                 setSelected(e.target.value)
                 setMessages([])
+                setAttached([])
               }}
             >
               {peers.map((p) => (
@@ -129,7 +136,8 @@ export default function ChatDrawer({
                   key={m.id}
                   className={`message${m.senderId === user.id ? ' message--own' : ''}`}
                 >
-                  <p>{m.text}</p>
+                  {m.text && <p>{m.text}</p>}
+                  <FileLinks files={m.files} />
                 </div>
               ))}
               {!messages.length && (
@@ -139,7 +147,19 @@ export default function ChatDrawer({
                 </div>
               )}
             </div>
+            <PendingFiles
+              files={attached}
+              onChange={setAttached}
+              disabled={busy}
+            />
             <form className="chat-drawer__composer" onSubmit={send}>
+              <FilePicker
+                compact
+                files={attached}
+                onChange={setAttached}
+                onError={setError}
+                disabled={busy}
+              />
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -149,7 +169,7 @@ export default function ChatDrawer({
               <button
                 type="submit"
                 className="button-primary icon-button"
-                disabled={busy || !draft.trim()}
+                disabled={busy || (!draft.trim() && !attached.length)}
                 aria-label="Отправить"
               >
                 <Send size={18} />
