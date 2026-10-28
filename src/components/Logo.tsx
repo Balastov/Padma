@@ -1,30 +1,14 @@
 import './Logo.css'
 
 type LogoProps = {
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'md' | 'lg'
   showTagline?: boolean
-  centered?: boolean
-  /** Symbol above wordmark + slogan, as on the login screen. */
-  stacked?: boolean
 }
 
-export default function Logo({
-  size = 'md',
-  showTagline = true,
-  centered,
-  stacked,
-}: LogoProps) {
-  const classes = [
-    'logo',
-    stacked ? 'logo--stacked' : 'logo--inline',
-    `logo--${size}`,
-    centered ? 'logo--centered' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-
+/** Brand block as in the brand image: symbol above the wordmark and slogan. */
+export default function Logo({ size = 'md', showTagline = true }: LogoProps) {
   return (
-    <div className={classes}>
+    <div className={`logo logo--${size}`}>
       <img src="/brand/padma-logo-symbol.svg" alt="" aria-hidden="true" />
       <div className="logo__text">
         <strong className="logo__wordmark">Padma</strong>

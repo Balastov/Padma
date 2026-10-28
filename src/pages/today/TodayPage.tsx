@@ -57,6 +57,8 @@ export default function TodayPage({ user }: { user: User }) {
     void load()
   }, [load])
 
+  // Known right away, unlike the teacher card loaded from the API.
+  const hasTeacher = Boolean(user.teacherId)
   const days = weekDays(anchor)
   const next = lessons.find((l) => lessonIsUpcoming(l))
   const todayKey = dateKey(moscowToday())
@@ -95,22 +97,17 @@ export default function TodayPage({ user }: { user: User }) {
       <div className="today-grid">
         <div className="today-main">
           <section className="student-next glass-panel">
-            <div className="student-next__portrait">
-              {teacher ? (
+            {teacher && (
+              <div className="student-next__portrait">
                 <Avatar user={teacher} large />
-              ) : (
-                <img
-                  src="/teacher-placeholder.png"
-                  alt=""
-                />
-              )}
-            </div>
+              </div>
+            )}
             <div className="student-next__content">
               <p className="eyebrow">
-                {teacher ? 'БЛИЖАЙШИЙ УРОК' : 'ВАШЕ ПРОСТРАНСТВО'}
+                {hasTeacher ? 'БЛИЖАЙШИЙ УРОК' : 'ВАШЕ ПРОСТРАНСТВО'}
               </p>
               <h2>
-                {!teacher
+                {!hasTeacher
                   ? 'Скоро вам назначат учителя'
                   : next
                     ? next.title
@@ -129,7 +126,7 @@ export default function TodayPage({ user }: { user: User }) {
                 </div>
               ) : (
                 <p className="secondary">
-                  {teacher
+                  {hasTeacher
                     ? 'Как только учитель назначит занятие, оно появится здесь.'
                     : 'Уроки появятся после знакомства с учителем.'}
                 </p>
@@ -148,13 +145,11 @@ export default function TodayPage({ user }: { user: User }) {
             <div className="today-prep__cards">
               <div>
                 <small>Материал</small>
-                <strong>Present Perfect vs Past Simple</strong>
-                <Link to="/library/m1">Открыть</Link>
+                <span className="secondary">Появится перед уроком</span>
               </div>
               <div>
                 <small>Слова</small>
-                <strong>Travelling · 20 слов</strong>
-                <Link to="/words/dictionary/lessons/vl-12">К словам урока</Link>
+                <span className="secondary">Появятся перед уроком</span>
               </div>
             </div>
             <div className="student-homework">

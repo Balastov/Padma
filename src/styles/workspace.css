@@ -23,7 +23,7 @@
 }
 .sidebar > .logo {
   padding: 0 12px;
-  margin-bottom: 40px;
+  margin-bottom: 28px;
 }
 .sidebar nav {
   display: flex;
@@ -60,6 +60,12 @@
   display: block;
   font-size: 11px;
   margin-top: 18px;
+}
+/* The quote is decoration: drop it when the menu needs the height. */
+@media (max-height: 860px) {
+  .sidebar__bottom {
+    display: none;
+  }
 }
 .sidebar:after {
   content: '';

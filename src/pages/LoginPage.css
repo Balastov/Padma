@@ -78,22 +78,6 @@
 .login__panel .logo {
   margin-bottom: 36px;
 }
-.login__panel .logo--stacked {
-  gap: 0;
-}
-.login__panel .logo--stacked img {
-  width: 80px;
-  margin-bottom: 18px;
-}
-.login__panel .logo__wordmark {
-  font-size: 46px;
-  margin-bottom: 10px;
-}
-.login__panel .logo__tagline {
-  font-size: 16px;
-  letter-spacing: -0.01em;
-  margin-top: 0;
-}
 .login__options {
   display: flex;
   flex-direction: column;
@@ -154,17 +138,7 @@
   }
   .login__panel .logo {
     margin-bottom: 28px;
-  }
-  .login__panel .logo--stacked img {
-    width: 68px;
-    margin-bottom: 14px;
-  }
-  .login__panel .logo__wordmark {
-    font-size: 40px;
-    margin-bottom: 8px;
-  }
-  .login__panel .logo__tagline {
-    font-size: 15px;
+    font-size: 46px;
   }
 }
 .login__submit {

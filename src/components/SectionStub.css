@@ -1,0 +1,24 @@
+.section-stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.section-stub__icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: #eaf0ff;
+  color: var(--accent);
+}
+.section-stub h2 {
+  margin: 4px 0 0;
+}
+.section-stub p {
+  margin: 0;
+  max-width: 32em;
+}

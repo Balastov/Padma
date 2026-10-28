@@ -101,16 +101,11 @@ export default function DashboardPage({
       <main className="student-grid">
         <div className="student-main">
           <section className="student-next glass-panel">
-            <div className="student-next__portrait">
-              {teacher ? (
+            {teacher && (
+              <div className="student-next__portrait">
                 <Avatar user={teacher} large />
-              ) : (
-                <img
-                  src="/teacher-placeholder.png"
-                  alt="Учитель в белой блузке с планшетом"
-                />
-              )}
-            </div>
+              </div>
+            )}
             <div className="student-next__content">
               <p className="eyebrow">
                 {teacher ? 'СЛЕДУЮЩИЙ УРОК' : 'ВАШЕ ПРОСТРАНСТВО'}

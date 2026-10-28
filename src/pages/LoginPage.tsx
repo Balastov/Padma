@@ -95,7 +95,7 @@ export default function LoginPage({
           />
         </aside>
         <section className="login__panel">
-          <Logo size="lg" centered stacked />
+          <Logo size="lg" />
           <form onSubmit={submit} className="form-stack">
             {useEmail ? (
               <label className="field">
