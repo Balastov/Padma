@@ -776,21 +776,30 @@ input[type='checkbox'] {
 @media (max-width: 767px) {
   .workspace {
     display: block;
-    padding: 16px 16px 104px;
+    padding: 16px 16px calc(96px + env(safe-area-inset-bottom, 0px));
   }
   .workspace__main {
     padding: 0;
   }
+  /* Pinned to the very bottom; the home indicator area stays inside. */
   .sidebar {
     position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: 12px;
+    left: 0;
+    right: 0;
+    bottom: 0;
     top: auto;
     height: auto;
-    padding: 6px;
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
     z-index: 30;
-    border-radius: 24px;
+    border-radius: 24px 24px 0 0;
+  }
+  /* The on-screen keyboard would lift the menu to the middle of the screen. */
+  body:has(
+      textarea:focus,
+      input:focus:not([type='checkbox'], [type='radio'], [type='file'])
+    )
+    .sidebar {
+    display: none;
   }
   .workspace .sidebar {
     background: var(--glass-fill-strong);

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, LogOut, UserRound } from 'lucide-react'
+import { ChevronDown, LogOut, Settings, UserRound } from 'lucide-react'
 import { isStaff } from '../api'
 import type { User } from '../api'
 import Avatar from './Avatar'
@@ -64,7 +64,7 @@ export default function ProfileMenu({
               navigate(profilePath)
             }}
           >
-            <UserRound size={18} />
+            <Settings size={18} />
             Настройки
           </button>
           <button

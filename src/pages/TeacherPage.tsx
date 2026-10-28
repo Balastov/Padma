@@ -5,7 +5,6 @@ import {
   Clock3,
   Home,
   Plus,
-  Settings,
   Users,
   BookOpen,
   Languages,
@@ -148,14 +147,6 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
           >
             <Library size={23} />
             <span>Библиотека</span>
-          </NavLink>
-          <NavLink
-            to="/teacher/settings"
-            aria-label="Настройки"
-            title="Настройки"
-          >
-            <Settings size={23} />
-            <span>Настройки</span>
           </NavLink>
         </nav>
         <div className="sidebar__bottom">
