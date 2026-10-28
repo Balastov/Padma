@@ -11,6 +11,7 @@ import {
 import {
   api,
   moscowToday,
+  lessonCaption,
   lessonIsUpcoming,
   dateKey,
   friendlyDate,
@@ -249,7 +250,7 @@ export default function TodayPage({ user }: { user: User }) {
                     <strong>
                       {friendlyDate(l.date)}, {l.start}
                     </strong>
-                    <small>{l.title}</small>
+                    <small>{lessonCaption(l)}</small>
                   </div>
                 </div>
               ))
@@ -270,7 +271,7 @@ export default function TodayPage({ user }: { user: User }) {
                     <strong>
                       {friendlyDate(l.date)}, {l.start}
                     </strong>
-                    <small>{l.title}</small>
+                    <small>{lessonCaption(l)}</small>
                   </div>
                 </div>
               ))}

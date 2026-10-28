@@ -358,8 +358,12 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
       start: '14:00',
       end: '14:50',
       title: 'Practice',
-      repeat: true,
-      weeks: 3,
+      recurrence: {
+        everyWeeks: 1,
+        days: [{ weekday: 4, start: '14:00', end: '14:50' }],
+        endType: 'count',
+        count: 3,
+      },
     }
     assert.equal(
       (await request('/lessons', 'POST', event, student)).status,
@@ -367,8 +371,31 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     )
     assert.equal((await request('/lessons', 'POST', event, other)).status, 403)
     assert.equal(
-      (await request('/lessons', 'POST', { ...event, end: '13:00' }, teacher))
-        .status,
+      (
+        await request(
+          '/lessons',
+          'POST',
+          { ...event, end: '13:00', recurrence: undefined },
+          teacher,
+        )
+      ).status,
+      400,
+    )
+    assert.equal(
+      (
+        await request(
+          '/lessons',
+          'POST',
+          {
+            ...event,
+            recurrence: {
+              ...event.recurrence,
+              days: [{ weekday: 4, start: '14:00', end: '13:00' }],
+            },
+          },
+          teacher,
+        )
+      ).status,
       400,
     )
     assert.equal(
@@ -541,9 +568,10 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     await new Promise((resolve) => server.close(resolve))
   }
   const reopened = createApp({ dbPath })
+  // The deleted lesson of a 3-lesson package is replaced at the end.
   assert.equal(
     reopened.db.prepare('SELECT count(*) AS n FROM lessons').get().n,
-    2,
+    3,
   )
   assert.equal(
     reopened.db.prepare('SELECT count(*) AS n FROM messages').get().n,

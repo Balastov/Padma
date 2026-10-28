@@ -2,9 +2,12 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarPlus } from 'lucide-react'
-import { api, moscowToday, dateKey, fullName } from '../api'
-import type { Lesson, User } from '../api'
+import { ApiError, api, moscowToday, dateKey, fullName } from '../api'
+import type { Lesson, LessonConflict, Recurrence, User } from '../api'
 import Calendar from '../components/Calendar'
+import ConflictNotice from '../components/ConflictNotice'
+import RecurrenceFields from '../components/RecurrenceFields'
+import { newRecurrence } from '../lessonSeries'
 export default function EventPage({
   users,
   lessons,
@@ -26,25 +29,35 @@ export default function EventPage({
     end: '14:50',
     title: '',
     note: '',
-    repeat: false,
-    weeks: 4,
   })
+  const [recurrence, setRecurrence] = useState<Recurrence | null>(null)
+  const [conflicts, setConflicts] = useState<LessonConflict[]>([])
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false)
-  const field = (key: string, value: unknown) =>
+  const field = (key: string, value: unknown) => {
+    setConflicts([])
     setForm((prev) => ({ ...prev, [key]: value }))
-  async function submit(e: FormEvent) {
-    e.preventDefault()
+  }
+  async function save(mode?: 'skip' | 'overlap') {
     setBusy(true)
     setError('')
     try {
-      await api('/lessons', 'POST', form)
+      await api('/lessons', 'POST', {
+        ...form,
+        recurrence: recurrence || undefined,
+        conflicts: mode,
+      })
       await onSaved()
     } catch (e) {
-      setError((e as Error).message)
+      if (e instanceof ApiError && e.conflicts.length) setConflicts(e.conflicts)
+      else setError((e as Error).message)
     } finally {
       setBusy(false)
     }
+  }
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    void save()
   }
   return (
     <>
@@ -86,7 +99,7 @@ export default function EventPage({
                 </select>
               </label>
               <label className="field">
-                <span>Дата *</span>
+                <span>{recurrence ? 'Начало серии *' : 'Дата *'}</span>
                 <input
                   required
                   type="date"
@@ -94,28 +107,55 @@ export default function EventPage({
                   onChange={(e) => field('date', e.target.value)}
                 />
               </label>
-              <div className="form-two">
-                <label className="field">
-                  <span>Начало *</span>
-                  <input
-                    required
-                    type="time"
-                    value={form.start}
-                    onChange={(e) => field('start', e.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Окончание *</span>
-                  <input
-                    required
-                    type="time"
-                    value={form.end}
-                    onChange={(e) => field('end', e.target.value)}
-                  />
-                </label>
-              </div>
+              {!recurrence && (
+                <div className="form-two">
+                  <label className="field">
+                    <span>Начало *</span>
+                    <input
+                      required
+                      type="time"
+                      value={form.start}
+                      onChange={(e) => field('start', e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Окончание *</span>
+                    <input
+                      required
+                      type="time"
+                      value={form.end}
+                      onChange={(e) => field('end', e.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+              <label className="toggle-label">
+                <span>Повторять урок</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(recurrence)}
+                  onChange={(e) => {
+                    setConflicts([])
+                    setRecurrence(
+                      e.target.checked
+                        ? newRecurrence(form.date, form.start, form.end)
+                        : null,
+                    )
+                  }}
+                />
+              </label>
+              {recurrence && (
+                <RecurrenceFields
+                  value={recurrence}
+                  startDate={form.date}
+                  onChange={(value) => {
+                    setConflicts([])
+                    setRecurrence(value)
+                  }}
+                />
+              )}
               <label className="field">
-                <span>Тема урока</span>
+                <span>{recurrence ? 'Тема по умолчанию' : 'Тема урока'}</span>
                 <input
                   maxLength={200}
                   placeholder="Например, грамматика: Past Simple"
@@ -138,28 +178,13 @@ export default function EventPage({
                   {form.note.length}/500
                 </small>
               </label>
-              <label className="toggle-label">
-                <span>Повторять каждую неделю</span>
-                <input
-                  type="checkbox"
-                  checked={form.repeat}
-                  onChange={(e) => field('repeat', e.target.checked)}
+              {conflicts.length > 0 && (
+                <ConflictNotice
+                  conflicts={conflicts}
+                  busy={busy}
+                  onSkip={recurrence ? () => void save('skip') : undefined}
+                  onOverlap={() => void save('overlap')}
                 />
-              </label>
-              {form.repeat && (
-                <label className="field">
-                  <span>Количество занятий, включая первое</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={form.weeks}
-                    onChange={(e) => field('weeks', Number(e.target.value))}
-                  />
-                  <small>
-                    До 12 недель. Пересечения проверяются для всей серии.
-                  </small>
-                </label>
               )}
               {error && (
                 <p className="error" role="alert">

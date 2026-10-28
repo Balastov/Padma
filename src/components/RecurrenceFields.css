@@ -1,0 +1,51 @@
+.recurrence {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.recurrence__group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.recurrence__group legend {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  padding: 0;
+}
+.recurrence__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.recurrence__days button {
+  min-height: 44px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: #ffffff9e;
+  border: 1px solid #5b6eac29;
+}
+.recurrence__days button.is-on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.recurrence__time {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.recurrence__time span {
+  color: var(--text-secondary);
+}
+.recurrence__segmented {
+  margin: 0;
+}

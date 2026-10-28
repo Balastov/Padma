@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, dateKey, friendlyDate, moscowToday } from '../../api'
+import {
+  api,
+  dateKey,
+  friendlyDate,
+  lessonCaption,
+  moscowToday,
+} from '../../api'
 import type { Lesson } from '../../api'
 import { useCatalog } from '../../student/useCatalog'
 import './LessonsArchive.css'
@@ -35,7 +41,7 @@ export default function LessonsArchivePage() {
             to={`/lessons/${l.id}`}
             className="glass-panel lessons-archive__card"
           >
-            <strong>{l.title}</strong>
+            <strong>{lessonCaption(l)}</strong>
             <span>{friendlyDate(l.date)}</span>
             <small>{l.note || 'Занятие завершено'}</small>
           </Link>

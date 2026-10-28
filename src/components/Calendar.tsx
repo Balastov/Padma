@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { layoutDay } from '../calendarLayout'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
-import { moscowToday, dateKey, fullName, weekDays } from '../api'
+import { moscowToday, dateKey, fullName, lessonCaption, weekDays } from '../api'
 import type { Lesson, User } from '../api'
 type Props = {
   lessons: Lesson[]
@@ -154,9 +154,9 @@ export default function Calendar({
                       return (
                         <button
                           key={l.id}
-                          title={`${fullName(users.find((u) => u.id === l.studentId))} · ${l.start}–${l.end} · ${l.title}`}
+                          title={`${fullName(users.find((u) => u.id === l.studentId))} · ${l.start}–${l.end} · ${lessonCaption(l)}`}
                           disabled={!onSelect}
-                          className={`calendar__event tone-${['blue', 'green', 'purple', 'pink'][l.studentId.charCodeAt(0) % 4]}`}
+                          className={`calendar__event tone-${['blue', 'green', 'purple', 'pink'][l.studentId.charCodeAt(0) % 4]} is-${l.status}`}
                           style={{
                             left: `calc(${(lane / lanes) * 100}% + 3px)`,
                             width: `calc(${100 / lanes}% - 6px)`,
@@ -171,7 +171,7 @@ export default function Calendar({
                           <strong>
                             {fullName(users.find((u) => u.id === l.studentId))}
                           </strong>
-                          <span>{l.title}</span>
+                          <span>{lessonCaption(l)}</span>
                         </button>
                       )
                     },
@@ -189,7 +189,7 @@ export default function Calendar({
           weekLessons.map((l) => (
             <button
               disabled={!onSelect}
-              className="agenda-row"
+              className={`agenda-row is-${l.status}`}
               key={l.id}
               onClick={() => onSelect?.(l)}
             >
@@ -207,7 +207,7 @@ export default function Calendar({
                 <strong>
                   {fullName(users.find((u) => u.id === l.studentId))}
                 </strong>
-                {l.title}
+                {lessonCaption(l)}
               </span>
               <ChevronRight size={18} />
             </button>

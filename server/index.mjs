@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import { initHomework, homeworkRoute } from './homework.mjs'
+import { initLessons, lessonsRoute } from './lessons.mjs'
 import { initVocab, vocabRoute } from './vocab.mjs'
 import { initLexicon, lexiconRoute } from './lexicon.mjs'
 import { initLexiconStudent, lexiconStudentRoute } from './lexiconStudent.mjs'
@@ -46,7 +47,6 @@ function timeZoneOf(data, current = DEFAULT_TIME_ZONE) {
 const passwordValid = (value) =>
   typeof value === 'string' && value.length >= 8 && value.length <= 128
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-const minutes = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
 export function createApp({
   dbPath = process.env.PADMA_DB || '.data/padma.sqlite',
   origins = (
@@ -56,6 +56,7 @@ export function createApp({
   secure = process.env.NODE_ENV === 'production',
 } = {}) {
   const db = openStore(dbPath)
+  initLessons(db)
   initHomework(db)
   initVocab(db)
   initLexicon(db)
@@ -218,6 +219,10 @@ export function createApp({
       if (!user) fail(401, 'Войдите в свой аккаунт')
       if (
         await homeworkRoute({ path, req, res, db, user, body, send, getUser })
+      )
+        return
+      if (
+        await lessonsRoute({ path, req, db, user, body, send, getUser })
       )
         return
       if (await vocabRoute({ path, req, res, db, user, body, send })) return
@@ -579,89 +584,6 @@ export function createApp({
         }
         return send(old ? 200 : 201, getUser(id))
       }
-      if (path === '/api/lessons' && req.method === 'GET') {
-        const all = db
-          .prepare(
-            'SELECT l.* FROM lessons l JOIN users u ON l.studentId=u.id WHERE u.archived=0 ORDER BY date,start',
-          )
-          .all()
-        return send(
-          200,
-          all.filter(
-            (l) =>
-              privileged(user) ||
-              l.teacherId === user.id ||
-              l.studentId === user.id,
-          ),
-        )
-      }
-      if (path === '/api/lessons' && req.method === 'POST') {
-        if (!staff(user)) fail(403, 'Нет доступа')
-        const data = await body(req)
-        const student = getUser(data.studentId)
-        if (!canStudent(user, student)) fail(403, 'Ученик недоступен')
-        if (!student.teacherId) fail(400, 'Сначала назначьте ученику учителя')
-        const date = text(data.date, 10),
-          start = text(data.start, 5),
-          end = text(data.end, 5)
-        if (
-          !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-          isNaN(Date.parse(date)) ||
-          new Date(date).toISOString().slice(0, 10) !== date ||
-          ![start, end].every((v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v)) ||
-          minutes(start) >= minutes(end)
-        )
-          fail(400, 'Укажите корректные дату и время: конец позже начала')
-        const count = data.repeat ? Number(data.weeks) : 1
-        if (!Number.isInteger(count) || count < 1 || count > 12)
-          fail(400, 'Повторение: от 1 до 12 недель')
-        const created = []
-        db.exec('BEGIN IMMEDIATE')
-        try {
-          for (let i = 0; i < count; i++) {
-            const day = new Date(date + 'T12:00:00Z')
-            day.setUTCDate(day.getUTCDate() + i * 7)
-            const nextDate = day.toISOString().slice(0, 10)
-            const conflict = db
-              .prepare(
-                'SELECT l.id FROM lessons l JOIN users u ON l.studentId=u.id WHERE u.archived=0 AND l.date=? AND (l.teacherId=? OR l.studentId=?) AND l.start<? AND l.end>?',
-              )
-              .get(nextDate, student.teacherId, student.id, end, start)
-            if (conflict) fail(409, `На ${nextDate} это время уже занято`)
-            const lesson = {
-              id: randomUUID(),
-              studentId: student.id,
-              teacherId: student.teacherId,
-              date: nextDate,
-              start,
-              end,
-              title: text(data.title) || 'Английский язык',
-              note: text(data.note, 500),
-            }
-            db.prepare('INSERT INTO lessons VALUES (?,?,?,?,?,?,?,?)').run(
-              ...Object.values(lesson),
-            )
-            created.push(lesson)
-          }
-          db.exec('COMMIT')
-        } catch (error) {
-          db.exec('ROLLBACK')
-          throw error
-        }
-        return send(201, created)
-      }
-      if (/^\/api\/lessons\/[^/]+$/.test(path) && req.method === 'DELETE') {
-        const id = path.split('/').pop()
-        const lesson = db.prepare('SELECT * FROM lessons WHERE id=?').get(id)
-        if (!lesson) fail(404, 'Занятие не найдено')
-        if (
-          !privileged(user) &&
-          !(user.roles.includes('teacher') && lesson.teacherId === user.id)
-        )
-          fail(403, 'Нет доступа')
-        db.prepare('DELETE FROM lessons WHERE id=?').run(id)
-        return send(200, { ok: true })
-      }
       if (path === '/api/chat-peers' && req.method === 'GET') {
         return send(
           200,
@@ -730,6 +652,7 @@ export function createApp({
     } catch (error) {
       send(error.status || 500, {
         error: error.status ? error.message : 'Не удалось выполнить запрос',
+        ...(error.status && error.details),
       })
     }
   })

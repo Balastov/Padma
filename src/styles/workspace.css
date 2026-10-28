@@ -388,6 +388,70 @@
   --event-bg: #fbe2f1;
   --event-accent: #ef5cb1;
 }
+.calendar__event.is-cancelled,
+.calendar__event.is-noshow {
+  --event-bg: #eef1f8;
+  --event-accent: #a7afc8;
+  color: var(--text-muted);
+}
+.calendar__event.is-cancelled strong {
+  text-decoration: line-through;
+}
+.calendar__event.is-noshow {
+  --event-accent: #eb9aa6;
+}
+.agenda-row.is-cancelled,
+.agenda-row.is-noshow {
+  color: var(--text-muted);
+}
+.agenda-row.is-cancelled > span:nth-child(2) strong {
+  text-decoration: line-through;
+}
+.lesson-status {
+  display: inline-block;
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #eef1f8;
+  color: var(--text-secondary);
+}
+.lesson-status--noshow {
+  background: #fdecef;
+  color: #a72a40;
+}
+.lesson-dialog__rule {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+.lesson-dialog__rule svg {
+  flex: none;
+  margin-top: 3px;
+}
+.lesson-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+.lesson-dialog__actions button {
+  min-height: 44px;
+  flex: 1 1 auto;
+}
+.lesson-dialog__form {
+  margin-top: 16px;
+}
+.lesson-dialog__scope {
+  flex-wrap: wrap;
+}
+.conflict-notice ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.event-form h2 svg {
+  vertical-align: -3px;
+}
 .calendar__empty {
   font-size: 13px;
   color: var(--text-secondary);

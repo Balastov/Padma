@@ -20,10 +20,10 @@ import {
   fullName,
   isManager,
 } from '../api'
-import type { Lesson, User } from '../api'
+import type { Lesson, LessonSeries, User } from '../api'
 import Logo from '../components/Logo'
 import Homework from '../components/Homework'
-import Modal from '../components/Modal'
+import LessonDialog from '../components/LessonDialog'
 import ProfileMenu from '../components/ProfileMenu'
 import JoinLessonButton from '../components/JoinLessonButton'
 import Avatar from '../components/Avatar'
@@ -32,6 +32,7 @@ import Messages from '../components/Messages'
 import UsersPage from './UsersPage'
 import AppearanceSettings from '../components/AppearanceSettings'
 import EventPage from './EventPage'
+import SeriesEditPage from './SeriesEditPage'
 import LexiconLayout from './teacher/lexicon/LexiconLayout'
 import DictionaryAllPage from './teacher/lexicon/DictionaryAllPage'
 import TopicsManagePage from './teacher/lexicon/TopicsManagePage'
@@ -50,19 +51,21 @@ type Props = {
 export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   const [users, setUsers] = useState<User[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
+  const [series, setSeries] = useState<LessonSeries[]>([])
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
   const [selected, setSelected] = useState<Lesson | null>(null)
-  const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
   const refresh = useCallback(async () => {
     try {
-      const [u, l] = await Promise.all([
+      const [u, l, s] = await Promise.all([
         api<User[]>('/users'),
         api<Lesson[]>('/lessons'),
+        api<LessonSeries[]>('/lesson-series'),
       ])
       setUsers(u)
       setLessons(l)
+      setSeries(s)
       setError('')
       setReady(true)
     } catch (e) {
@@ -71,11 +74,16 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   }, [])
   useEffect(() => {
     let active = true
-    Promise.all([api<User[]>('/users'), api<Lesson[]>('/lessons')])
-      .then(([u, l]) => {
+    Promise.all([
+      api<User[]>('/users'),
+      api<Lesson[]>('/lessons'),
+      api<LessonSeries[]>('/lesson-series'),
+    ])
+      .then(([u, l, s]) => {
         if (active) {
           setUsers(u)
           setLessons(l)
+          setSeries(s)
           setReady(true)
         }
       })
@@ -89,7 +97,9 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   const students = users.filter((u) => u.roles.includes('student'))
   const now = moscowToday(),
     today = dateKey(now)
-  const todayCount = lessons.filter((l) => l.date === today).length
+  const todayCount = lessons.filter(
+    (l) => l.date === today && l.status === 'scheduled',
+  ).length
   const lessonWord =
     todayCount % 10 === 1 && todayCount % 100 !== 11
       ? 'занятие'
@@ -102,19 +112,6 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   const nextStudent = users.find((u) => u.id === next?.studentId)
   const create = (date?: string) =>
     navigate('/teacher/new' + (date ? '?date=' + date : ''))
-  async function remove() {
-    if (!selected) return
-    setBusy(true)
-    try {
-      await api('/lessons/' + selected.id, 'DELETE', {})
-      setSelected(null)
-      await refresh()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
   return (
     <div className="workspace">
       <aside className="sidebar glass-panel">
@@ -305,6 +302,20 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               }
             />
             <Route
+              path="series/:id"
+              element={
+                <SeriesEditPage
+                  users={users}
+                  lessons={lessons}
+                  series={series}
+                  onSaved={async () => {
+                    await refresh()
+                    navigate('/teacher')
+                  }}
+                />
+              }
+            />
+            <Route
               path="settings"
               element={
                 <>
@@ -420,34 +431,13 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
           </Routes>
         )}
         {selected && (
-          <Modal titleId="lesson-title" onClose={() => setSelected(null)}>
-            <p className="eyebrow">ЗАНЯТИЕ</p>
-            <h2 id="lesson-title">{selected.title}</h2>
-            <p>{fullName(users.find((u) => u.id === selected.studentId))}</p>
-            <p>
-              {friendlyDate(selected.date)} · {selected.start}–{selected.end}
-            </p>
-            {selected.note && <p className="notice">{selected.note}</p>}
-            <p className="secondary">
-              Отмена удалит только это занятие, остальные повторы сохранятся.
-            </p>
-            <div className="form-actions">
-              <button
-                className="button-secondary"
-                autoFocus
-                onClick={() => setSelected(null)}
-              >
-                Закрыть
-              </button>
-              <button
-                className="button-danger"
-                disabled={busy}
-                onClick={remove}
-              >
-                {busy ? 'Отменяем…' : 'Отменить занятие'}
-              </button>
-            </div>
-          </Modal>
+          <LessonDialog
+            lesson={selected}
+            series={series.find((x) => x.id === selected.seriesId)}
+            users={users}
+            onClose={() => setSelected(null)}
+            onChanged={refresh}
+          />
         )}
       </main>
     </div>

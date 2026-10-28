@@ -28,7 +28,7 @@ test('vocab CRUD, catalog assignment, lesson words, audio', async () => {
     ).run(id, id, `${id}@example.test`, hash, JSON.stringify(roles), teacher)
   }
   db.prepare(
-    'INSERT INTO lessons VALUES (?,?,?,?,?,?,?,?)',
+    'INSERT INTO lessons (id,studentId,teacherId,date,start,end,title,note) VALUES (?,?,?,?,?,?,?,?)',
   ).run(
     'lesson-1',
     'student',

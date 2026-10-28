@@ -13,6 +13,7 @@ export type User = {
   timeZone?: string
 }
 export type Teacher = Pick<User, 'id' | 'name' | 'surname' | 'photo'>
+export type LessonStatus = 'scheduled' | 'cancelled' | 'noshow'
 export type Lesson = {
   id: string
   studentId: string
@@ -22,6 +23,48 @@ export type Lesson = {
   end: string
   title: string
   note: string
+  seriesId: string | null
+  status: LessonStatus
+  /** Number of the lesson in its series, 0 for cancelled and no-show. */
+  seq: number
+  /** Title set by hand instead of the series plan. */
+  customTitle: boolean
+}
+export const lessonStatusNames: Record<LessonStatus, string> = {
+  scheduled: 'Запланирован',
+  cancelled: 'Отменён',
+  noshow: 'Неявка',
+}
+/** Lesson title, prefixed with the status for cancelled and no-show. */
+export const lessonCaption = (lesson: Lesson) =>
+  (lesson.status === 'scheduled'
+    ? ''
+    : lessonStatusNames[lesson.status] + ' · ') + lesson.title
+/** Weekday 1 (Monday) … 7 (Sunday) with its own time. */
+export type SeriesDay = { weekday: number; start: string; end: string }
+export type Recurrence = {
+  everyWeeks: number
+  days: SeriesDay[]
+  endType: 'never' | 'until' | 'count'
+  until: string | null
+  count: number | null
+  /** Lesson topics in order; when it runs out the series title is used. */
+  plan: string[]
+}
+export type LessonSeries = Recurrence & {
+  id: string
+  studentId: string
+  teacherId: string
+  startDate: string
+  title: string
+  note: string
+}
+export type LessonConflict = {
+  date: string
+  start: string
+  end: string
+  busyStart: string
+  busyEnd: string
 }
 export type Message = {
   id: string
@@ -44,9 +87,11 @@ export const isStaff = (user: User) =>
 export const LESSON_URL = 'https://s03fa3hb.ktalk.ru/lesngcokej1n'
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  conflicts: LessonConflict[]
+  constructor(message: string, status: number, conflicts?: LessonConflict[]) {
     super(message)
     this.status = status
+    this.conflicts = conflicts || []
   }
 }
 export async function api<T>(
@@ -60,7 +105,7 @@ export async function api<T>(
     headers: data === undefined ? {} : { 'Content-Type': 'application/json' },
     body: data === undefined ? undefined : JSON.stringify(data),
   })
-  let result: { error?: string } = {}
+  let result: { error?: string; conflicts?: LessonConflict[] } = {}
   try {
     result = await res.json()
   } catch {
@@ -72,6 +117,7 @@ export async function api<T>(
     throw new ApiError(
       result.error || 'Не удалось выполнить запрос',
       res.status,
+      result.conflicts,
     )
   return result as T
 }
@@ -104,4 +150,5 @@ export function moscowToday() {
   )
 }
 export const lessonIsUpcoming = (lesson: Lesson) =>
+  (lesson.status ?? 'scheduled') === 'scheduled' &&
   new Date(lesson.date + 'T' + lesson.end + ':00+03:00').getTime() > Date.now()
