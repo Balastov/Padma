@@ -33,3 +33,24 @@ dist-ssr
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Generated mobile assets and local signing / build settings
+mobile/www/app-icon.png
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/App/CapApp-SPM/Sources/
+ios/App/CapApp-SPM/Package.swift
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/DerivedData/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/
+android/.idea/
+*.keystore
+*.jks

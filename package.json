@@ -1,7 +1,7 @@
 {
   "name": "padma",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -12,9 +12,15 @@
     "seed:doc": "node scripts/seed.mjs",
     "import:lexicon": "node scripts/import-lexicon.mjs",
     "import:book": "node scripts/import-book.mjs",
-    "test": "node --test server/*.test.mjs"
+    "test": "node --test server/*.test.mjs",
+    "mobile:sync": "node scripts/mobile.mjs",
+    "mobile:ios": "npm run mobile:sync && cap open ios",
+    "mobile:android": "npm run mobile:sync && cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0",
     "lucide-react": "^1.45.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -22,6 +28,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.6.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

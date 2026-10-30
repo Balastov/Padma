@@ -45,6 +45,10 @@ npm run preview  # только статический Vite preview; для по
 
 Интеграционные тесты API и ручные проверки описаны в [DEV.md](DEV.md).
 
+Тестовые мобильные проекты iOS и Android: [MOBILE.md](MOBILE.md).
+`npm run mobile:ios` синхронизирует онлайн-прототип и открывает его в Xcode для
+установки на свой iPhone; `npm run mobile:android` — в Android Studio.
+
 ## Первая версия
 
 - Настоящий вход по email и паролю. Сессия хранится в HttpOnly cookie, пароль — только как salted scrypt hash на сервере.

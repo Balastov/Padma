@@ -1,5 +1,13 @@
 # Разработка Padma
 
+## Мобильный онлайн-прототип
+
+Capacitor 8.6.0, проекты `ios/` и `android/`, конфигурация `capacitor.config.ts`.
+Подготовка: `npm run mobile:sync`; открытие iOS: `npm run mobile:ios`.
+Прототип загружает опубликованную `https://www.padma.ru`, а не локальный `dist`.
+Авторизация остаётся в одном HTTPS origin; серверных изменений для прототипа нет.
+Установка, ограничения и сценарии проверки — в [MOBILE.md](MOBILE.md).
+
 ## Локальная среда
 
 Рабочая папка на Mac: `/Users/aleksejbalastov/Padma`.
