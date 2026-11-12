@@ -11,6 +11,7 @@ import {
   Library,
 } from 'lucide-react'
 import {
+  ApiError,
   api,
   moscowToday,
   lessonIsUpcoming,
@@ -19,7 +20,7 @@ import {
   fullName,
   isManager,
 } from '../api'
-import type { Lesson, LessonSeries, User } from '../api'
+import type { Lesson, LessonConflict, LessonSeries, User } from '../api'
 import Logo from '../components/Logo'
 import Homework from '../components/Homework'
 import LessonDialog from '../components/LessonDialog'
@@ -27,6 +28,9 @@ import ProfileMenu from '../components/ProfileMenu'
 import JoinLessonButton from '../components/JoinLessonButton'
 import Avatar from '../components/Avatar'
 import Calendar from '../components/Calendar'
+import type { LessonSlot } from '../components/Calendar'
+import Modal from '../components/Modal'
+import ConflictNotice from '../components/ConflictNotice'
 import Messages from '../components/Messages'
 import UsersPage from './UsersPage'
 import AppearanceSettings from '../components/AppearanceSettings'
@@ -55,6 +59,13 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
   const [selected, setSelected] = useState<Lesson | null>(null)
+  const [moving, setMoving] = useState<{
+    lesson: Lesson
+    slot: LessonSlot
+    conflicts: LessonConflict[]
+    error: string
+  } | null>(null)
+  const [moveBusy, setMoveBusy] = useState(false)
   const navigate = useNavigate()
   const refresh = useCallback(async () => {
     try {
@@ -110,6 +121,37 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
         : 'занятий'
   const next = lessons.find((l) => lessonIsUpcoming(l))
   const nextStudent = users.find((u) => u.id === next?.studentId)
+  // Shown in the new place at once; refresh() restores it on failure.
+  async function moveLesson(
+    lesson: Lesson,
+    slot: LessonSlot,
+    conflicts?: 'overlap',
+  ) {
+    setLessons((prev) =>
+      prev.map((l) => (l.id === lesson.id ? { ...l, ...slot } : l)),
+    )
+    setMoveBusy(true)
+    try {
+      await api(`/lessons/${lesson.id}`, 'PATCH', {
+        ...slot,
+        title: lesson.title,
+        note: lesson.note,
+        conflicts,
+      })
+      setMoving(null)
+    } catch (e) {
+      const found = e instanceof ApiError ? e.conflicts : []
+      setMoving({
+        lesson,
+        slot,
+        conflicts: found,
+        error: found.length ? '' : (e as Error).message,
+      })
+    } finally {
+      setMoveBusy(false)
+      await refresh()
+    }
+  }
   const create = (date?: string) =>
     navigate('/teacher/new' + (date ? '?date=' + date : ''))
   return (
@@ -258,6 +300,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                     users={users}
                     onNew={create}
                     onSelect={setSelected}
+                    onMove={(lesson, slot) => void moveLesson(lesson, slot)}
                   />
                 </>
               }
@@ -408,6 +451,42 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
             onClose={() => setSelected(null)}
             onChanged={refresh}
           />
+        )}
+        {moving && (
+          <Modal titleId="move-title" onClose={() => setMoving(null)}>
+            <p className="eyebrow">ПЕРЕНОС ЗАНЯТИЯ</p>
+            <h2 id="move-title">{moving.lesson.title}</h2>
+            <p>
+              {fullName(users.find((u) => u.id === moving.lesson.studentId))}
+            </p>
+            <p>
+              {friendlyDate(moving.slot.date)} · {moving.slot.start}–
+              {moving.slot.end}
+            </p>
+            {moving.conflicts.length > 0 && (
+              <ConflictNotice
+                conflicts={moving.conflicts}
+                busy={moveBusy}
+                onOverlap={() =>
+                  void moveLesson(moving.lesson, moving.slot, 'overlap')
+                }
+              />
+            )}
+            {moving.error && (
+              <p className="error" role="alert">
+                Не удалось перенести урок: {moving.error}
+              </p>
+            )}
+            <div className="form-actions">
+              <button
+                className="button-secondary"
+                autoFocus
+                onClick={() => setMoving(null)}
+              >
+                Оставить как было
+              </button>
+            </div>
+          </Modal>
         )}
       </main>
     </div>

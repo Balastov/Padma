@@ -13,6 +13,7 @@ import {
   moscowToday,
   lessonCaption,
   lessonIsUpcoming,
+  lessonState,
   dateKey,
   friendlyDate,
   fullName,
@@ -64,6 +65,9 @@ export default function TodayPage({ user }: { user: User }) {
   const todayKey = dateKey(moscowToday())
   const future = lessons.filter((l) => l.date >= todayKey)
   const pastCount = lessons.filter((l) => l.date < todayKey).length
+  const lessonDays = new Set(
+    lessons.filter((l) => l.status === 'scheduled').map((l) => l.date),
+  )
   const visible = future.filter(
     (l) =>
       l.date >= dateKey(days[0]) &&
@@ -221,26 +225,32 @@ export default function TodayPage({ user }: { user: User }) {
               </button>
             </div>
             <div className="student-days">
-              {days.map((d) => (
-                <button
-                  type="button"
-                  key={dateKey(d)}
-                  className={selectedDay === dateKey(d) ? 'is-active' : ''}
-                  onClick={() =>
-                    setSelectedDay(selectedDay === dateKey(d) ? '' : dateKey(d))
-                  }
-                >
-                  <span>
-                    {d.toLocaleDateString('ru-RU', { weekday: 'short' })}
-                  </span>
-                  <strong>{d.getDate()}</strong>
-                </button>
-              ))}
+              {days.map((d) => {
+                const key = dateKey(d),
+                  hasLesson = lessonDays.has(key)
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    className={`${selectedDay === key ? 'is-active' : ''}${hasLesson ? ' has-lesson' : ''}`}
+                    aria-pressed={selectedDay === key}
+                    aria-label={`${d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}${hasLesson ? ', есть урок' : ''}`}
+                    onClick={() =>
+                      setSelectedDay(selectedDay === key ? '' : key)
+                    }
+                  >
+                    <span>
+                      {d.toLocaleDateString('ru-RU', { weekday: 'short' })}
+                    </span>
+                    <strong>{d.getDate()}</strong>
+                  </button>
+                )
+              })}
             </div>
             {visible.length ? (
               visible.map((l) => (
                 <div key={l.id} className="student-schedule__lesson">
-                  <span className="status-dot" />
+                  <span className={`status-dot state-${lessonState(l)}`} />
                   <div>
                     <strong>
                       {friendlyDate(l.date)}, {l.start}

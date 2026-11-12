@@ -53,6 +53,15 @@
   --surface: #fff;
   --accent: #536cff;
   --danger: #eb5267;
+  /* Lesson states: scheduled, done, no-show, cancelled. */
+  --lesson-scheduled-bg: #dceeff;
+  --lesson-scheduled: #4096f7;
+  --lesson-done-bg: #ddf7ed;
+  --lesson-done: #2ccb94;
+  --lesson-noshow-bg: #fff3d6;
+  --lesson-noshow: #f2b23a;
+  --lesson-cancelled-bg: #fde4e8;
+  --lesson-cancelled: #eb5267;
   --gradient-primary: linear-gradient(
     100deg,
     #27d8ef 0%,
@@ -610,4 +619,21 @@ textarea {
     scrollbar-width: thin;
     scrollbar-color: rgb(83 108 255 / 0.35) transparent;
   }
+}
+/* Lesson state colors for calendars and schedule dots. */
+.state-scheduled {
+  --event-bg: var(--lesson-scheduled-bg);
+  --event-accent: var(--lesson-scheduled);
+}
+.state-done {
+  --event-bg: var(--lesson-done-bg);
+  --event-accent: var(--lesson-done);
+}
+.state-noshow {
+  --event-bg: var(--lesson-noshow-bg);
+  --event-accent: var(--lesson-noshow);
+}
+.state-cancelled {
+  --event-bg: var(--lesson-cancelled-bg);
+  --event-accent: var(--lesson-cancelled);
 }

@@ -167,3 +167,17 @@ export function moscowToday() {
 export const lessonIsUpcoming = (lesson: Lesson) =>
   (lesson.status ?? 'scheduled') === 'scheduled' &&
   new Date(lesson.date + 'T' + lesson.end + ':00+03:00').getTime() > Date.now()
+/** Calendar color: a scheduled lesson becomes «done» once it has ended. */
+export type LessonState = 'scheduled' | 'done' | 'cancelled' | 'noshow'
+export const lessonStateNames: Record<LessonState, string> = {
+  scheduled: 'Назначен',
+  done: 'Проведён',
+  cancelled: 'Отменён',
+  noshow: 'Неявка',
+}
+export const lessonState = (lesson: Lesson): LessonState =>
+  lesson.status !== 'scheduled'
+    ? lesson.status
+    : lessonIsUpcoming(lesson)
+      ? 'scheduled'
+      : 'done'

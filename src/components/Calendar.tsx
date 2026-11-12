@@ -1,24 +1,53 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { layoutDay } from '../calendarLayout'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
-import { moscowToday, dateKey, fullName, lessonCaption, weekDays } from '../api'
+import {
+  moscowToday,
+  dateKey,
+  fullName,
+  lessonCaption,
+  lessonState,
+  lessonStateNames,
+  weekDays,
+} from '../api'
 import type { Lesson, User } from '../api'
+/** New place of a lesson dragged in the week grid. */
+export type LessonSlot = { date: string; start: string; end: string }
 type Props = {
   lessons: Lesson[]
   users: User[]
   onNew?: (date?: string) => void
   onSelect?: (lesson: Lesson) => void
+  /** Enables moving scheduled lessons by drag and drop. */
+  onMove?: (lesson: Lesson, slot: LessonSlot) => void
   compact?: boolean
 }
+const HOUR = 52,
+  SNAP = 15,
+  LONG_PRESS = 350
+const toMinutes = (time: string) =>
+  Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+const toTime = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 export default function Calendar({
   lessons,
   users,
   onNew,
   onSelect,
+  onMove,
   compact,
 }: Props) {
   const [anchor, setAnchor] = useState(moscowToday)
   const [view, setView] = useState('week')
+  const [drag, setDrag] = useState<{
+    lesson: Lesson
+    target: LessonSlot
+  } | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const stopDrag = useRef<(() => void) | null>(null)
+  const suppressClick = useRef(false)
+  useEffect(() => () => stopDrag.current?.(), [])
   const days = weekDays(anchor),
     today = dateKey(moscowToday())
   const step = (n: number) => {
@@ -35,17 +64,127 @@ export default function Calendar({
   )
   const latest = Math.max(
     20,
-    ...weekLessons.map((l) =>
-      Math.ceil((Number(l.end.slice(0, 2)) * 60 + Number(l.end.slice(3))) / 60),
-    ),
+    ...weekLessons.map((l) => Math.ceil(toMinutes(l.end) / 60)),
   )
   const hours = Array.from(
     { length: latest - earliest },
     (_, i) => earliest + i,
   )
+  const studentName = (l: Lesson) =>
+    fullName(users.find((u) => u.id === l.studentId))
+
+  // Mouse drags after a few pixels; touch needs a long press so the
+  // grid still scrolls under a finger.
+  function startDrag(e: ReactPointerEvent<HTMLButtonElement>, lesson: Lesson) {
+    suppressClick.current = false
+    if (!onMove || lesson.status !== 'scheduled' || e.button !== 0) return
+    stopDrag.current?.()
+    const column = e.currentTarget.parentElement
+    if (!column) return
+    const move = onMove,
+      pointerId = e.pointerId,
+      touch = e.pointerType === 'touch',
+      x0 = e.clientX,
+      y0 = e.clientY,
+      startMin = toMinutes(lesson.start),
+      duration = toMinutes(lesson.end) - startMin,
+      grab =
+        earliest * 60 +
+        ((y0 - column.getBoundingClientRect().top) / HOUR) * 60 -
+        startMin
+    let active = false,
+      target: LessonSlot = {
+        date: lesson.date,
+        start: lesson.start,
+        end: lesson.end,
+      }
+    const slotAt = (x: number, y: number) => {
+      const columns = [
+        ...(gridRef.current?.querySelectorAll<HTMLElement>(
+          '.calendar__slots[data-date]',
+        ) ?? []),
+      ]
+      if (!columns.length) return target
+      const col =
+        columns.find((c) => {
+          const r = c.getBoundingClientRect()
+          return x >= r.left && x < r.right
+        }) ??
+        (x < columns[0].getBoundingClientRect().left
+          ? columns[0]
+          : columns[columns.length - 1])
+      const raw =
+        earliest * 60 +
+        ((y - col.getBoundingClientRect().top) / HOUR) * 60 -
+        grab
+      const start = Math.min(
+        Math.max(Math.round(raw / SNAP) * SNAP, earliest * 60),
+        latest * 60 - duration,
+      )
+      return {
+        date: col.dataset.date ?? lesson.date,
+        start: toTime(start),
+        end: toTime(start + duration),
+      }
+    }
+    const activate = () => {
+      active = true
+      suppressClick.current = true
+      setDrag({ lesson, target })
+    }
+    const timer = touch ? window.setTimeout(activate, LONG_PRESS) : 0
+    const finish = () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', finish)
+      window.removeEventListener('touchmove', blockScroll)
+      window.removeEventListener('keydown', onKey)
+      stopDrag.current = null
+      setDrag(null)
+    }
+    function onPointerMove(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return
+      if (!active) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < (touch ? 10 : 4))
+          return
+        // A finger that moves before the long press scrolls the page.
+        if (touch) return finish()
+        activate()
+      }
+      const next = slotAt(ev.clientX, ev.clientY)
+      if (next.date !== target.date || next.start !== target.start) {
+        target = next
+        setDrag({ lesson, target })
+      }
+    }
+    function onPointerUp(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return
+      const moved =
+        active && (target.date !== lesson.date || target.start !== lesson.start)
+      finish()
+      // The click that follows a drop must not open the lesson.
+      window.setTimeout(() => {
+        suppressClick.current = false
+      })
+      if (moved) move(lesson, target)
+    }
+    function blockScroll(ev: TouchEvent) {
+      if (active) ev.preventDefault()
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === 'Escape') finish()
+    }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', finish)
+    window.addEventListener('touchmove', blockScroll, { passive: false })
+    window.addEventListener('keydown', onKey)
+    stopDrag.current = finish
+  }
   return (
     <section
-      className={`calendar glass-panel${compact ? ' calendar--compact' : ''}`}
+      className={`calendar glass-panel${compact ? ' calendar--compact' : ''}${drag ? ' is-dragging' : ''}`}
     >
       <div className="section-heading calendar__heading">
         <div>
@@ -106,8 +245,9 @@ export default function Calendar({
         className={`calendar__scroll${view === 'agenda' ? ' is-agenda' : ''}`}
       >
         <div
+          ref={gridRef}
           className="calendar__grid"
-          style={{ minHeight: hours.length * 52 + 58 }}
+          style={{ minHeight: hours.length * HOUR + 58 }}
         >
           <div className="calendar__times">
             <div className="calendar__day-head" />
@@ -117,6 +257,7 @@ export default function Calendar({
           </div>
           {days.map((day) => {
             const key = dateKey(day)
+            const ghost = drag?.target.date === key ? drag : null
             return (
               <div
                 key={key}
@@ -139,42 +280,70 @@ export default function Calendar({
                 </button>
                 <div
                   className="calendar__slots"
-                  style={{ height: hours.length * 52 }}
+                  data-date={key}
+                  style={{ height: hours.length * HOUR }}
                 >
                   {hours.map((h) => (
                     <div className="calendar__slot" key={h} />
                   ))}
                   {layoutDay(weekLessons.filter((l) => l.date === key)).map(
                     ({ lesson: l, lane, lanes }) => {
-                      const start =
-                        Number(l.start.slice(0, 2)) * 60 +
-                        Number(l.start.slice(3))
-                      const end =
-                        Number(l.end.slice(0, 2)) * 60 + Number(l.end.slice(3))
+                      const start = toMinutes(l.start),
+                        end = toMinutes(l.end),
+                        state = lessonState(l),
+                        draggable = Boolean(onMove) && l.status === 'scheduled'
                       return (
                         <button
                           key={l.id}
-                          title={`${fullName(users.find((u) => u.id === l.studentId))} · ${l.start}–${l.end} · ${lessonCaption(l)}`}
+                          title={`${studentName(l)} · ${l.start}–${l.end} · ${lessonStateNames[state]} · ${l.title}${draggable ? ' · перетащите, чтобы перенести' : ''}`}
                           disabled={!onSelect}
-                          className={`calendar__event tone-${['blue', 'green', 'purple', 'pink'][l.studentId.charCodeAt(0) % 4]} is-${l.status}`}
+                          className={`calendar__event state-${state} is-${l.status}${draggable ? ' is-draggable' : ''}${drag?.lesson.id === l.id ? ' is-drag-source' : ''}`}
                           style={{
                             left: `calc(${(lane / lanes) * 100}% + 3px)`,
                             width: `calc(${100 / lanes}% - 6px)`,
-                            top: (start / 60 - earliest) * 52,
-                            height: Math.max(((end - start) / 60) * 52 - 3, 24),
+                            top: (start / 60 - earliest) * HOUR,
+                            height: Math.max(
+                              ((end - start) / 60) * HOUR - 3,
+                              24,
+                            ),
                           }}
-                          onClick={() => onSelect?.(l)}
+                          onPointerDown={(e) => startDrag(e, l)}
+                          onClick={() => {
+                            if (!suppressClick.current) onSelect?.(l)
+                          }}
                         >
                           <small>
                             {l.start}–{l.end}
                           </small>
-                          <strong>
-                            {fullName(users.find((u) => u.id === l.studentId))}
-                          </strong>
+                          <strong>{studentName(l)}</strong>
                           <span>{lessonCaption(l)}</span>
                         </button>
                       )
                     },
+                  )}
+                  {ghost && (
+                    <div
+                      className={`calendar__event calendar__ghost state-${lessonState({ ...ghost.lesson, ...ghost.target })}`}
+                      aria-hidden="true"
+                      style={{
+                        top:
+                          (toMinutes(ghost.target.start) / 60 - earliest) *
+                          HOUR,
+                        height: Math.max(
+                          ((toMinutes(ghost.target.end) -
+                            toMinutes(ghost.target.start)) /
+                            60) *
+                            HOUR -
+                            3,
+                          24,
+                        ),
+                      }}
+                    >
+                      <small>
+                        {ghost.target.start}–{ghost.target.end}
+                      </small>
+                      <strong>{studentName(ghost.lesson)}</strong>
+                    </div>
                   )}
                 </div>
               </div>
@@ -189,7 +358,7 @@ export default function Calendar({
           weekLessons.map((l) => (
             <button
               disabled={!onSelect}
-              className={`agenda-row is-${l.status}`}
+              className={`agenda-row state-${lessonState(l)} is-${l.status}`}
               key={l.id}
               onClick={() => onSelect?.(l)}
             >
@@ -205,7 +374,11 @@ export default function Calendar({
               </span>
               <span>
                 <strong>
-                  {fullName(users.find((u) => u.id === l.studentId))}
+                  <i
+                    className="lesson-state-dot"
+                    title={lessonStateNames[lessonState(l)]}
+                  />
+                  {studentName(l)}
                 </strong>
                 {lessonCaption(l)}
               </span>
@@ -223,6 +396,16 @@ export default function Calendar({
           </div>
         )}
       </div>
+      {weekLessons.length > 0 && (
+        <ul className="calendar__legend" aria-label="Цвета занятий">
+          {(['scheduled', 'done', 'noshow', 'cancelled'] as const).map((s) => (
+            <li key={s} className={`state-${s}`}>
+              <i className="lesson-state-dot" />
+              {lessonStateNames[s]}
+            </li>
+          ))}
+        </ul>
+      )}
       {!weekLessons.length && (
         <p className="calendar__empty">
           Свободная неделя — время для новых планов.
