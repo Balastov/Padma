@@ -188,6 +188,28 @@ export async function removeFiles(db, store, kind, refId) {
   db.prepare('DELETE FROM files WHERE kind=? AND refId=?').run(kind, refId)
 }
 
+/**
+ * Deletes file rows inside the caller's transaction. Returns the ids whose
+ * contents unlinkFiles removes from disk after the commit.
+ */
+export function dropFileRows(db, kind, refIds, onlyIds) {
+  const ids = []
+  for (const refId of refIds) {
+    const rows = db
+      .prepare('SELECT id FROM files WHERE kind=? AND refId=?')
+      .all(kind, refId)
+      .filter((row) => !onlyIds || onlyIds.includes(row.id))
+    for (const { id } of rows) {
+      db.prepare('DELETE FROM files WHERE id=?').run(id)
+      ids.push(id)
+    }
+  }
+  return ids
+}
+export async function unlinkFiles(store, ids) {
+  for (const id of ids) await unlinkQuiet(store.path(id))
+}
+
 async function unlinkQuiet(path) {
   try {
     await unlink(path)

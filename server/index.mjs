@@ -1,5 +1,10 @@
 import { createServer } from 'node:http'
-import { initHomework, homeworkRoute, canReadHomework } from './homework.mjs'
+import {
+  initHomework,
+  homeworkRoute,
+  canReadHomework,
+  purgeDoneHomework,
+} from './homework.mjs'
 import {
   initFiles,
   filesRoute,
@@ -120,9 +125,14 @@ export function createApp({
     },
   }
   const purge = () =>
-    purgeFiles(db, store).catch((error) =>
-      console.error('Не удалось удалить устаревшие файлы', error),
-    )
+    Promise.all([
+      purgeFiles(db, store).catch((error) =>
+        console.error('Не удалось удалить устаревшие файлы', error),
+      ),
+      purgeDoneHomework(db, store).catch((error) =>
+        console.error('Не удалось удалить выполненные задания', error),
+      ),
+    ])
   void purge()
   const purgeTimer = setInterval(purge, 36e5)
   purgeTimer.unref()
@@ -259,7 +269,17 @@ export function createApp({
       }
       if (!user) fail(401, 'Войдите в свой аккаунт')
       if (
-        await homeworkRoute({ path, req, res, db, user, body, send, getUser })
+        await homeworkRoute({
+          path,
+          req,
+          res,
+          db,
+          user,
+          body,
+          send,
+          getUser,
+          store,
+        })
       )
         return
       if (

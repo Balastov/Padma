@@ -1,7 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import { privileged, staff } from './store.mjs'
 import { topicTerms, subtopicTerms } from './lexicon.mjs'
-import { attachFiles, listFiles } from './files.mjs'
+import {
+  MAX_FILES,
+  attachFiles,
+  dropFileRows,
+  listFiles,
+  unlinkFiles,
+} from './files.mjs'
+import { localDay } from './timezone.mjs'
+
+/** Completed homework is deleted for good this many days after review. */
+export const DONE_KEEP_DAYS = 30
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
@@ -30,6 +40,74 @@ export function initHomework(db) {
     PRIMARY KEY (homeworkId, termId)
   );
   CREATE INDEX IF NOT EXISTS homework_lexicon_sources_hw ON homework_lexicon_sources(homeworkId);`)
+  const columns = db.prepare('PRAGMA table_info(homework)').all()
+  if (!columns.some((c) => c.name === 'archived'))
+    db.exec(
+      'ALTER TABLE homework ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
+    )
+}
+const lastSubmission = (db, homeworkId) =>
+  db
+    .prepare(
+      'SELECT * FROM submissions WHERE homeworkId=? ORDER BY created DESC,rowid DESC LIMIT 1',
+    )
+    .get(homeworkId)
+/**
+ * assigned — on the student's side (new or returned for revision),
+ * review — sent to the teacher, done — marked completed,
+ * overdue — still on the student's side after the Moscow due date.
+ */
+export function homeworkStatus(item, last, today = localDay(new Date())) {
+  if (last?.status === 'submitted') return 'review'
+  if (last?.status === 'accepted') return 'done'
+  return item.due && item.due < today ? 'overdue' : 'assigned'
+}
+const transaction = (db, fn) => {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const result = fn()
+    db.exec('COMMIT')
+    return result
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+/** Removes homework with answers, words and files. Cannot be undone. */
+export async function deleteHomework(db, store, id) {
+  const files = transaction(db, () => {
+    const submissions = db
+      .prepare('SELECT id FROM submissions WHERE homeworkId=?')
+      .all(id)
+      .map((s) => s.id)
+    const ids = [
+      ...dropFileRows(db, 'homework', [id]),
+      ...dropFileRows(db, 'submission', submissions),
+    ]
+    db.prepare('DELETE FROM homework_terms WHERE homeworkId=?').run(id)
+    db.prepare('DELETE FROM homework_lexicon_sources WHERE homeworkId=?').run(
+      id,
+    )
+    db.prepare('DELETE FROM submissions WHERE homeworkId=?').run(id)
+    db.prepare('DELETE FROM homework WHERE id=?').run(id)
+    return ids
+  })
+  await unlinkFiles(store, files)
+}
+/** Deletes homework completed more than DONE_KEEP_DAYS ago. */
+export async function purgeDoneHomework(db, store, now = new Date()) {
+  const border = new Date(now.getTime() - DONE_KEEP_DAYS * 864e5).toISOString()
+  const due = db
+    .prepare('SELECT id FROM homework')
+    .all()
+    .filter(({ id }) => {
+      const last = lastSubmission(db, id)
+      return (
+        last?.status === 'accepted' && last.reviewed && last.reviewed <= border
+      )
+    })
+  for (const { id } of due) await deleteHomework(db, store, id)
+  return due.length
 }
 
 const LEXICON_KINDS = { topic: 'Тема', subtopic: 'Подтема', search: 'Поиск по словарю' }
@@ -109,11 +187,15 @@ export function canReadHomework(db, user, getUser, { homeworkId, submissionId })
   const item = db
     .prepare(
       homeworkId
-        ? 'SELECT studentId FROM homework WHERE id=?'
-        : 'SELECT h.studentId FROM homework h JOIN submissions s ON s.homeworkId=h.id WHERE s.id=?',
+        ? 'SELECT studentId,archived FROM homework WHERE id=?'
+        : 'SELECT h.studentId,h.archived FROM homework h JOIN submissions s ON s.homeworkId=h.id WHERE s.id=?',
     )
     .get(homeworkId || submissionId)
-  return Boolean(item && canReadStudent(user, getUser(item.studentId)))
+  return Boolean(
+    item &&
+    !(item.archived && user.id === item.studentId) &&
+    canReadStudent(user, getUser(item.studentId)),
+  )
 }
 export async function homeworkRoute({
   path,
@@ -123,16 +205,41 @@ export async function homeworkRoute({
   body,
   send,
   getUser,
+  store,
 }) {
   if (!path.startsWith('/api/homework')) return false
   const canRead = (student) => canReadStudent(user, student)
   const canManage = (student) =>
     staff(user) && (privileged(user) || student?.teacherId === user.id)
+  // Archived homework is visible only to those who manage it.
+  const visible = (item) => {
+    const student = getUser(item.studentId)
+    return canRead(student) && (!item.archived || canManage(student))
+  }
   const accessible = (id) => {
     const item = db.prepare('SELECT * FROM homework WHERE id=?').get(id)
-    if (!item || !canRead(getUser(item.studentId)))
-      fail(404, 'Задание недоступно')
+    if (!item || !visible(item)) fail(404, 'Задание недоступно')
     return item
+  }
+  const manageable = (id) => {
+    const item = accessible(id)
+    if (!canManage(getUser(item.studentId)) || user.id === item.studentId)
+      fail(403, 'Нет доступа к заданию')
+    return item
+  }
+  const readTask = (data) => {
+    const title = clean(data.title, 200),
+      description = clean(data.description, 10000),
+      due = clean(data.due, 10)
+    if (!title || !description) fail(400, 'Укажите название и описание задания')
+    if (
+      due &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(due) ||
+        isNaN(Date.parse(due)) ||
+        new Date(due).toISOString().slice(0, 10) !== due)
+    )
+      fail(400, 'Некорректный срок сдачи')
+    return { title, description, due }
   }
   const lexicon = (homeworkId) => {
     const sources = db
@@ -151,8 +258,12 @@ export async function homeworkRoute({
       .all(homeworkId)
     return { sources, words }
   }
+  const today = localDay(new Date())
   const detail = (item) => ({
     ...item,
+    archived: Boolean(item.archived),
+    status: homeworkStatus(item, lastSubmission(db, item.id), today),
+    canManage: canManage(getUser(item.studentId)) && user.id !== item.studentId,
     files: listFiles(db, 'homework', item.id),
     lexicon: lexicon(item.id),
     submissions: db
@@ -168,7 +279,7 @@ export async function homeworkRoute({
       db
         .prepare('SELECT * FROM homework ORDER BY created DESC,id')
         .all()
-        .filter((h) => canRead(getUser(h.studentId)))
+        .filter(visible)
         .map(detail),
     )
     return true
@@ -178,17 +289,7 @@ export async function homeworkRoute({
       student = getUser(data.studentId)
     if (!student?.roles.includes('student') || !canManage(student))
       fail(403, 'Ученик недоступен')
-    const title = clean(data.title, 200),
-      description = clean(data.description, 10000),
-      due = clean(data.due, 10)
-    if (!title || !description) fail(400, 'Укажите название и описание задания')
-    if (
-      due &&
-      (!/^\d{4}-\d{2}-\d{2}$/.test(due) ||
-        isNaN(Date.parse(due)) ||
-        new Date(due).toISOString().slice(0, 10) !== due)
-    )
-      fail(400, 'Некорректный срок сдачи')
+    const { title, description, due } = readTask(data)
     const { sources, duplicates } = lexiconFromBody(db, data.lexicon)
     const item = {
       id: randomUUID(),
@@ -201,9 +302,9 @@ export async function homeworkRoute({
     }
     db.exec('BEGIN IMMEDIATE')
     try {
-      db.prepare('INSERT INTO homework VALUES (?,?,?,?,?,?,?)').run(
-        ...Object.values(item),
-      )
+      db.prepare(
+        'INSERT INTO homework (id,studentId,authorId,title,description,due,created) VALUES (?,?,?,?,?,?,?)',
+      ).run(...Object.values(item))
       attachFiles(db, user, data.fileIds, 'homework', item.id)
       const insertSource = db.prepare(
         `INSERT INTO homework_lexicon_sources
@@ -253,11 +354,7 @@ export async function homeworkRoute({
       fileIds = Array.isArray(data.fileIds) ? data.fileIds : []
     if (!answer && !fileIds.length)
       fail(400, 'Напишите ответ или приложите файл')
-    const last = db
-      .prepare(
-        'SELECT status FROM submissions WHERE homeworkId=? ORDER BY created DESC,rowid DESC LIMIT 1',
-      )
-      .get(item.id)
+    const last = lastSubmission(db, item.id)
     if (last && last.status !== 'returned')
       fail(409, 'Работа уже отправлена или принята')
     const id = randomUUID()
@@ -287,17 +384,60 @@ export async function homeworkRoute({
       (data.status === 'returned' && !comment)
     )
       fail(400, 'Для доработки нужен комментарий')
-    const last = db
-      .prepare(
-        'SELECT * FROM submissions WHERE homeworkId=? ORDER BY created DESC,rowid DESC LIMIT 1',
-      )
-      .get(item.id)
+    if (item.archived) fail(409, 'Задание в архиве')
+    const last = lastSubmission(db, item.id)
     if (!last || last.id !== data.submissionId || last.status !== 'submitted')
       fail(409, 'Эта версия уже проверена. Обновите список.')
     db.prepare(
       'UPDATE submissions SET status=?,comment=?,reviewerId=?,reviewed=? WHERE id=?',
     ).run(data.status, comment, user.id, new Date().toISOString(), last.id)
     send(200, detail(item))
+    return true
+  }
+  const archive = /^\/api\/homework\/([^/]+)\/archive$/.exec(path)
+  if (archive && req.method === 'POST') {
+    const item = manageable(archive[1])
+    const data = await body(req)
+    if (typeof data.archived !== 'boolean') fail(400, 'Укажите действие')
+    db.prepare('UPDATE homework SET archived=? WHERE id=?').run(
+      data.archived ? 1 : 0,
+      item.id,
+    )
+    send(200, detail({ ...item, archived: data.archived ? 1 : 0 }))
+    return true
+  }
+  const one = /^\/api\/homework\/([^/]+)$/.exec(path)
+  if (one && req.method === 'PATCH') {
+    const item = manageable(one[1])
+    const data = await body(req)
+    const task = readTask(data)
+    const remove = Array.isArray(data.removeFileIds)
+      ? data.removeFileIds.map(String)
+      : []
+    const added = Array.isArray(data.fileIds) ? data.fileIds.length : 0
+    const files = transaction(db, () => {
+      const dropped = dropFileRows(db, 'homework', [item.id], remove)
+      const left = db
+        .prepare(
+          `SELECT count(*) AS n FROM files WHERE kind='homework' AND refId=?`,
+        )
+        .get(item.id).n
+      if (left + added > MAX_FILES)
+        fail(400, `Можно приложить до ${MAX_FILES} файлов`)
+      attachFiles(db, user, data.fileIds, 'homework', item.id)
+      db.prepare(
+        'UPDATE homework SET title=?,description=?,due=? WHERE id=?',
+      ).run(task.title, task.description, task.due, item.id)
+      return dropped
+    })
+    await unlinkFiles(store, files)
+    send(200, detail({ ...item, ...task }))
+    return true
+  }
+  if (one && req.method === 'DELETE') {
+    const item = manageable(one[1])
+    await deleteHomework(db, store, item.id)
+    send(200, { ok: true })
     return true
   }
   fail(404, 'Не найдено')

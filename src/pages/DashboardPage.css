@@ -177,9 +177,6 @@
 .student-homework .hw__row {
   padding: 14px 0;
 }
-.student-homework .hw__deadline {
-  display: none;
-}
 @media (max-width: 1199px) {
   .student-page {
     padding: 20px;

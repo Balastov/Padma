@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BookOpen, Volume2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  BookOpen,
+  Pencil,
+  Trash2,
+  Volume2,
+} from 'lucide-react'
 import { api, friendlyDate, fullName } from '../api'
 import type { User } from '../api'
-import { uploadAll } from '../files'
+import { MAX_FILES, uploadAll } from '../files'
 import type { StoredFile } from '../files'
 import { FileLinks, FilePicker } from './Attachments'
 import HomeworkLexicon from './HomeworkLexicon'
 import { sourceLabel, wordsCount } from './lexiconFormat'
 import type { LexiconSource } from './HomeworkLexicon'
 import { playWordAudio } from '../student/audio'
+import Modal from './Modal'
 import './Homework.css'
 
 type Submission = {
@@ -18,6 +26,7 @@ type Submission = {
   created: string
   status: 'submitted' | 'returned' | 'accepted'
   comment: string
+  reviewed: string | null
   files: StoredFile[]
 }
 type Assignment = {
@@ -26,6 +35,10 @@ type Assignment = {
   title: string
   description: string
   due: string
+  status: Status
+  archived: boolean
+  /** Owner, admin or the student's teacher: edit, archive, delete. */
+  canManage: boolean
   /** Teacher's files for the task. */
   files: StoredFile[]
   submissions: Submission[]
@@ -45,24 +58,21 @@ type Assignment = {
     }[]
   }
 }
+/** Computed by the server; returned work is assigned again. */
 const statuses = {
-  todo: 'К выполнению',
-  submitted: 'На проверке',
-  returned: 'Нужна доработка',
-  accepted: 'Принято',
+  assigned: 'Назначено',
+  review: 'На проверке',
+  done: 'Выполнено',
+  overdue: 'Просрочено',
 }
 type Status = keyof typeof statuses
-const statusOf = (item: Assignment): Status =>
-  item.submissions.at(-1)?.status || 'todo'
-const moscowToday = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(
-    new Date(),
-  )
-/** Deadline passed and the work is still on the student's side. */
-const isOverdue = (item: Assignment, today: string) =>
-  !!item.due &&
-  item.due < today &&
-  (statusOf(item) === 'todo' || statusOf(item) === 'returned')
+const versionNames: Record<Submission['status'], string> = {
+  submitted: 'На проверке',
+  returned: 'Возвращено на доработку',
+  accepted: 'Выполнено',
+}
+/** Completed homework is deleted for good after this many days. */
+const DONE_KEEP_DAYS = 30
 const stamp = (value: string) =>
   new Date(value).toLocaleString('ru-RU', {
     timeZone: 'Europe/Moscow',
@@ -80,15 +90,15 @@ export default function Homework({ students }: { students?: User[] }) {
   const [notice, setNotice] = useState('')
   const [studentFilter, setStudentFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<Status | ''>('')
-  const [overdueOnly, setOverdueOnly] = useState(false)
-  const today = moscowToday()
-  const filtering = !!(studentFilter || statusFilter || overdueOnly)
-  const visible = items.filter(
+  const [archiveOnly, setArchiveOnly] = useState(false)
+  const filtering = !!(studentFilter || statusFilter || archiveOnly)
+  const current = items.filter((item) => item.archived === archiveOnly)
+  const visible = current.filter(
     (item) =>
       (!studentFilter || item.studentId === studentFilter) &&
-      (!statusFilter || statusOf(item) === statusFilter) &&
-      (!overdueOnly || isOverdue(item, today)),
+      (!statusFilter || item.status === statusFilter),
   )
+  const archivedCount = items.filter((item) => item.archived).length
   const refresh = useCallback(async () => {
     try {
       setItems(await api<Assignment[]>('/homework'))
@@ -221,14 +231,14 @@ export default function Homework({ students }: { students?: User[] }) {
         </p>
       )}
       {!ready && !error && <p role="status">Загружаем задания…</p>}
-      {ready && !items.length && (
+      {ready && !items.length && !archiveOnly && (
         <p className="secondary">
           {students
             ? 'Выданных заданий пока нет.'
             : 'Учитель ещё не выдал домашнее задание.'}
         </p>
       )}
-      {students && !!items.length && (
+      {students && (!!items.length || archiveOnly) && (
         <div className="hw__filters" role="group" aria-label="Фильтры заданий">
           <label>
             Ученик
@@ -261,15 +271,15 @@ export default function Homework({ students }: { students?: User[] }) {
           <label className="hw__filter-check">
             <input
               type="checkbox"
-              checked={overdueOnly}
-              onChange={(e) => setOverdueOnly(e.target.checked)}
+              checked={archiveOnly}
+              onChange={(e) => setArchiveOnly(e.target.checked)}
             />
-            Просроченные
+            Архив{archivedCount ? ` (${archivedCount})` : ''}
           </label>
           <span className="caption hw__filter-count">
             {filtering
-              ? `Показано ${visible.length} из ${items.length}`
-              : `Всего: ${items.length}`}
+              ? `Показано ${visible.length} из ${current.length}`
+              : `Всего: ${current.length}`}
           </span>
           {filtering && (
             <button
@@ -278,7 +288,7 @@ export default function Homework({ students }: { students?: User[] }) {
               onClick={() => {
                 setStudentFilter('')
                 setStatusFilter('')
-                setOverdueOnly(false)
+                setArchiveOnly(false)
               }}
             >
               Сбросить
@@ -287,13 +297,16 @@ export default function Homework({ students }: { students?: User[] }) {
         </div>
       )}
       {filtering && !visible.length && (
-        <p className="secondary">Нет заданий по выбранным фильтрам.</p>
+        <p className="secondary">
+          {archiveOnly && !current.length
+            ? 'В архиве пока пусто.'
+            : 'Нет заданий по выбранным фильтрам.'}
+        </p>
       )}
       {visible.map((item) => (
         <AssignmentCard
           key={item.id}
           item={item}
-          overdue={isOverdue(item, today)}
           teacher={!!students}
           studentName={
             students
@@ -308,13 +321,11 @@ export default function Homework({ students }: { students?: User[] }) {
 }
 function AssignmentCard({
   item,
-  overdue,
   teacher,
   studentName,
   onSaved,
 }: {
   item: Assignment
-  overdue: boolean
   teacher: boolean
   studentName?: string
   onSaved: () => Promise<void>
@@ -324,7 +335,25 @@ function AssignmentCard({
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<'view' | 'edit' | 'delete'>('view')
   const last = item.submissions.at(-1)
+  const removal =
+    item.status === 'done' && last?.reviewed
+      ? new Date(Date.parse(last.reviewed) + DONE_KEEP_DAYS * 864e5)
+      : null
+  async function act(action: () => Promise<unknown>) {
+    setBusy(true)
+    setError('')
+    try {
+      await action()
+      setMode('view')
+      await onSaved()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
@@ -360,21 +389,46 @@ function AssignmentCard({
       setBusy(false)
     }
   }
+  if (mode === 'edit')
+    return (
+      <article className="hw__card">
+        <EditForm
+          item={item}
+          onCancel={() => setMode('view')}
+          onSaved={async () => {
+            setMode('view')
+            await onSaved()
+          }}
+        />
+      </article>
+    )
   return (
-    <article className="hw__card">
+    <article className={`hw__card${item.archived ? ' is-archived' : ''}`}>
       <div className="hw__head">
         <h3>{item.title}</h3>
         <span className="hw__badges">
-          {overdue && (
-            <span className="subtle-badge hw__overdue">Просрочено</span>
-          )}
-          <span className="subtle-badge">{statuses[statusOf(item)]}</span>
+          {item.archived && <span className="subtle-badge">В архиве</span>}
+          <span
+            className={`subtle-badge hw__status hw__status--${item.status}`}
+          >
+            {statuses[item.status]}
+          </span>
         </span>
       </div>
       {studentName && <p className="secondary">{studentName}</p>}
       {item.due && (
         <p className="hw__deadline">
           Сдать до {friendlyDate(item.due)} · Москва
+        </p>
+      )}
+      {removal && (
+        <p className="hw__deadline">
+          Выполненное задание будет удалено{' '}
+          {removal.toLocaleDateString('ru-RU', {
+            timeZone: 'Europe/Moscow',
+            day: 'numeric',
+            month: 'long',
+          })}
         </p>
       )}
       <p className="hw__text">{item.description}</p>
@@ -419,7 +473,7 @@ function AssignmentCard({
           {item.submissions.map((s, i) => (
             <div className="hw__version" key={s.id}>
               <strong>
-                Отправка {i + 1} · {statuses[s.status]}
+                Отправка {i + 1} · {versionNames[s.status]}
               </strong>
               <small>{stamp(s.created)} · Москва</small>
               {s.text && <p className="hw__text">{s.text}</p>}
@@ -453,11 +507,11 @@ function AssignmentCard({
             className="button-primary"
             disabled={busy || (!answer.trim() && !files.length)}
           >
-            {busy ? 'Отправляем…' : 'Отправить на проверку'}
+            {busy ? 'Отправляем…' : 'Отправить учителю'}
           </button>
         </form>
       )}
-      {teacher && last?.status === 'submitted' && (
+      {teacher && !item.archived && last?.status === 'submitted' && (
         <div className="hw__form">
           <label>
             Комментарий к работе
@@ -481,10 +535,91 @@ function AssignmentCard({
               disabled={busy}
               onClick={() => review('accepted')}
             >
-              Принять работу
+              Выполнено
             </button>
           </div>
         </div>
+      )}
+      {item.canManage && (
+        <div className="hw__manage">
+          {!item.archived && (
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => setMode('edit')}
+            >
+              <Pencil size={15} aria-hidden="true" />
+              Изменить
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() =>
+              void act(() =>
+                api('/homework/' + item.id + '/archive', 'POST', {
+                  archived: !item.archived,
+                }),
+              )
+            }
+          >
+            {item.archived ? (
+              <ArchiveRestore size={15} aria-hidden="true" />
+            ) : (
+              <Archive size={15} aria-hidden="true" />
+            )}
+            {item.archived ? 'Вернуть из архива' : 'В архив'}
+          </button>
+          <button
+            type="button"
+            className="text-button hw__delete"
+            disabled={busy}
+            onClick={() => setMode('delete')}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+            Удалить
+          </button>
+        </div>
+      )}
+      {mode === 'delete' && (
+        <Modal titleId={'hw-delete-' + item.id} onClose={() => setMode('view')}>
+          <h2 id={'hw-delete-' + item.id}>Удалить задание?</h2>
+          <p>
+            «{item.title}»{studentName ? ` · ${studentName}` : ''}
+          </p>
+          <p className="secondary">
+            Задание, ответы ученика, комментарии и все файлы будут удалены
+            безвозвратно. Чтобы только скрыть задание, отправьте его в архив.
+          </p>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button-secondary"
+              autoFocus
+              disabled={busy}
+              onClick={() => setMode('view')}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="button-danger"
+              disabled={busy}
+              onClick={() =>
+                void act(() => api('/homework/' + item.id, 'DELETE'))
+              }
+            >
+              {busy ? 'Удаляем…' : 'Удалить навсегда'}
+            </button>
+          </div>
+        </Modal>
       )}
       {error && (
         <p role="alert" className="error">
@@ -492,5 +627,128 @@ function AssignmentCard({
         </p>
       )}
     </article>
+  )
+}
+function EditForm({
+  item,
+  onCancel,
+  onSaved,
+}: {
+  item: Assignment
+  onCancel: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [form, setForm] = useState({
+    title: item.title,
+    description: item.description,
+    due: item.due,
+  })
+  const [removed, setRemoved] = useState<string[]>([])
+  const [added, setAdded] = useState<File[]>([])
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const kept = item.files.filter((f) => !removed.includes(f.id)).length
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await api('/homework/' + item.id, 'PATCH', {
+        ...form,
+        removeFileIds: removed,
+        fileIds: await uploadAll(added),
+      })
+      await onSaved()
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="hw__form" onSubmit={save}>
+      <h3>Изменить задание</h3>
+      <label>
+        Название задания
+        <input
+          required
+          maxLength={200}
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+        />
+      </label>
+      <label>
+        Описание задания
+        <textarea
+          required
+          maxLength={10000}
+          rows={4}
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+      </label>
+      <label>
+        Сдать до (Москва)
+        <input
+          type="date"
+          value={form.due}
+          onChange={(e) => setForm({ ...form, due: e.target.value })}
+        />
+      </label>
+      {!!item.files.length && (
+        <fieldset className="hw__edit-files">
+          <legend>Файлы задания</legend>
+          {item.files.map((f) => (
+            <label key={f.id} className="hw__filter-check">
+              <input
+                type="checkbox"
+                checked={!removed.includes(f.id)}
+                onChange={(e) =>
+                  setRemoved(
+                    e.target.checked
+                      ? removed.filter((id) => id !== f.id)
+                      : [...removed, f.id],
+                  )
+                }
+              />
+              {f.name}
+              {f.deleted && ' — удалён по сроку хранения'}
+            </label>
+          ))}
+          <small className="secondary">
+            Снимите отметку, чтобы удалить файл при сохранении.
+          </small>
+        </fieldset>
+      )}
+      {kept < MAX_FILES ? (
+        <FilePicker
+          files={added}
+          onChange={setAdded}
+          disabled={busy}
+          max={MAX_FILES - kept}
+        />
+      ) : (
+        <small className="secondary">
+          У задания уже {MAX_FILES} файлов — снимите отметку, чтобы заменить.
+        </small>
+      )}
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      <div className="hw__actions">
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Отмена
+        </button>
+        <button className="button-primary" disabled={busy}>
+          {busy ? 'Сохраняем…' : 'Сохранить'}
+        </button>
+      </div>
+    </form>
   )
 }

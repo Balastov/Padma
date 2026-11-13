@@ -273,8 +273,66 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.subtle-badge.hw__overdue {
+/* Same pastel palette as lesson states in the calendar. */
+.subtle-badge.hw__status--assigned {
+  color: #1f5fae;
+  background: var(--lesson-scheduled-bg);
+}
+.subtle-badge.hw__status--review {
+  color: #8a5a00;
+  background: var(--lesson-noshow-bg);
+}
+.subtle-badge.hw__status--done {
+  color: #13865f;
+  background: var(--lesson-done-bg);
+}
+.subtle-badge.hw__status--overdue {
   color: #b42318;
-  background: #fde8e7cc;
-  border-color: #f6b9b4;
+  background: var(--lesson-cancelled-bg);
+}
+.hw__card.is-archived > :not(.hw__manage) {
+  opacity: 0.75;
+}
+.hw__manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 14px;
+}
+.hw__manage .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+}
+.hw__manage .hw__delete {
+  color: var(--danger);
+}
+.hw__edit-files {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.hw__edit-files legend {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.hw__form h3 {
+  margin: 0;
+}
+.hw__edit-files label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.hw__edit-files input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
 }

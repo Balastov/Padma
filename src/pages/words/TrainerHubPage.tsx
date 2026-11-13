@@ -19,7 +19,7 @@ import {
   toVocabWord,
 } from '../../student/lexicon'
 import type { HomeworkSet, StudentWord } from '../../student/lexicon'
-import { friendlyDate } from '../../api'
+import { dateKey, friendlyDate, moscowToday } from '../../api'
 import { wordsCount } from '../../components/lexiconFormat'
 import './TrainerPage.css'
 
@@ -31,7 +31,9 @@ const STATUS_ORDER: Record<WordStatus, number> = {
   new: 2,
   mastered: 3,
 }
-const HW_STATUS = { todo: 'К выполнению', returned: 'Нужна доработка' }
+// Returned work is assigned again; the Moscow due date makes it overdue.
+const hwStatus = (h: HomeworkSet) =>
+  h.due && h.due < dateKey(moscowToday()) ? 'Просрочено' : 'Назначено'
 
 type Picked = {
   kind: 'homework' | 'collection' | 'topic'
@@ -210,7 +212,7 @@ export default function TrainerHubPage() {
                     >
                       <strong>{h.title}</strong>
                       <small>
-                        {HW_STATUS[h.status]}
+                        {hwStatus(h)}
                         {h.due && ` · до ${friendlyDate(h.due)}`} ·{' '}
                         {h.wordCount ? wordsCount(h.wordCount) : 'без слов'}
                       </small>

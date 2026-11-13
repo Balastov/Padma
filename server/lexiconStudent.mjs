@@ -245,7 +245,7 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
                 (SELECT status FROM submissions s WHERE s.homeworkId = h.id
                  ORDER BY s.created DESC, s.rowid DESC LIMIT 1) AS status,
                 (SELECT count(*) FROM homework_terms t WHERE t.homeworkId = h.id) AS wordCount
-         FROM homework h WHERE h.studentId = ?
+         FROM homework h WHERE h.studentId = ? AND h.archived = 0
          ORDER BY h.created DESC`,
       )
       .all(user.id)
@@ -258,7 +258,9 @@ export async function lexiconStudentRoute({ path, req, db, user, body, send }) {
   const hwMatch = /^\/api\/lexicon\/me\/homework\/([^/]+)\/words$/.exec(path)
   if (hwMatch && req.method === 'GET') {
     const hw = db
-      .prepare('SELECT id, title FROM homework WHERE id = ? AND studentId = ?')
+      .prepare(
+        'SELECT id, title FROM homework WHERE id = ? AND studentId = ? AND archived = 0',
+      )
       .get(decodeURIComponent(hwMatch[1]), user.id)
     if (!hw) fail(404, 'Задание не найдено')
     const statuses = statesOf(db, user.id)
