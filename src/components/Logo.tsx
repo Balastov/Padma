@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../version'
 import './Logo.css'
 
 type LogoProps = {
@@ -13,7 +14,12 @@ export default function Logo({ size = 'md', showTagline = true }: LogoProps) {
       <div className="logo__text">
         <strong className="logo__wordmark">Padma</strong>
         {showTagline && (
-          <span className="logo__tagline">Учиться вместе. Видеть больше.</span>
+          <>
+            <span className="logo__tagline">
+              Учиться вместе. Видеть больше.
+            </span>
+            <span className="logo__version">Версия {APP_VERSION}</span>
+          </>
         )}
       </div>
     </div>

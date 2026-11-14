@@ -49,6 +49,14 @@ npm run preview  # только статический Vite preview; для по
 `npm run mobile:ios` синхронизирует онлайн-прототип и открывает его в Xcode для
 установки на свой iPhone; `npm run mobile:android` — в Android Studio.
 
+## Версии
+
+Семантическое версионирование `MAJOR.MINOR.PATCH`, текущая версия — **0.1.0**. Источник — поле `version` в `package.json`: при сборке Vite подставляет его в `__APP_VERSION__` (`src/version.ts`), и сайт показывает «Версия X.Y.Z» под слоганом в логотипе.
+
+- `PATCH` — исправления без новых возможностей, `MINOR` — новые возможности, `MAJOR` — несовместимые изменения (до 1.0.0 продукт считается ранним).
+- Поднять версию: `npm version patch --no-git-tag-version` (или `minor` / `major`) — обновит `package.json` и `package-lock.json`.
+- Мобильные проекты держат версию отдельно; при выпуске сборок для телефонов синхронизируйте `MARKETING_VERSION` в `ios/App/App.xcodeproj/project.pbxproj`, `versionName` (и увеличивайте `versionCode`) в `android/app/build.gradle`, а также `appendUserAgent` в `capacitor.config.ts`.
+
 ## Первая версия
 
 - Настоящий вход по email и паролю. Сессия хранится в HttpOnly cookie, пароль — только как salted scrypt hash на сервере.
