@@ -18,7 +18,7 @@ export default function Logo({ size = 'md', showTagline = true }: LogoProps) {
             <span className="logo__tagline">
               Учиться вместе. Видеть больше.
             </span>
-            <span className="logo__version">Версия {APP_VERSION}</span>
+            <span className="logo__version">v{APP_VERSION}</span>
           </>
         )}
       </div>

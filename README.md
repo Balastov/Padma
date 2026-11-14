@@ -51,7 +51,7 @@ npm run preview  # только статический Vite preview; для по
 
 ## Версии
 
-Семантическое версионирование `MAJOR.MINOR.PATCH`, текущая версия — **0.1.0**. Источник — поле `version` в `package.json`: при сборке Vite подставляет его в `__APP_VERSION__` (`src/version.ts`), и сайт показывает «Версия X.Y.Z» под слоганом в логотипе.
+Семантическое версионирование `MAJOR.MINOR.PATCH`, текущая версия (с 0.1.0) хранится в одном месте — поле `version` в `package.json`: при сборке Vite подставляет его в `__APP_VERSION__` (`src/version.ts`), и сайт показывает «vX.Y.Z» под слоганом в логотипе.
 
 - `PATCH` — исправления без новых возможностей, `MINOR` — новые возможности, `MAJOR` — несовместимые изменения (до 1.0.0 продукт считается ранним).
 - Поднять версию: `npm version patch --no-git-tag-version` (или `minor` / `major`) — обновит `package.json` и `package-lock.json`.
