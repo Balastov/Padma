@@ -12,6 +12,7 @@ import {
 import { api, fullName, isManager, roleNames } from '../api'
 import type { Role, User } from '../api'
 import Avatar from '../components/Avatar'
+import NotificationHelp from '../components/NotificationHelp'
 import {
   formatForeignPhoneInput,
   formatRuPhoneInput,
@@ -241,7 +242,9 @@ function UserEditor({
     ),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [confirm, setConfirm] = useState(false)
+    [confirm, setConfirm] = useState(false),
+    [pushWarning, setPushWarning] = useState(''),
+    [helpOpen, setHelpOpen] = useState(false)
   const editorRef = useRef<HTMLElement>(null)
   const manager = isManager(actor)
   const editable =
@@ -357,8 +360,15 @@ function UserEditor({
       if (profile && actor.id === next.id) {
         try {
           await syncPushWithPreference(Boolean(next.notificationsEnabled))
-        } catch {
-          /* permission or unsupported — flag already saved */
+          setPushWarning('')
+        } catch (e) {
+          // The flag is saved, but this device will not get notifications.
+          if (next.notificationsEnabled) {
+            setPushWarning(
+              `Профиль сохранён, но уведомления на этом устройстве не включились. ${(e as Error).message}. Как это исправить — в инструкции ниже.`,
+            )
+            setHelpOpen(true)
+          }
         }
       }
       await onSaved(next)
@@ -530,6 +540,14 @@ function UserEditor({
               Сообщения и важные события Padma на этом устройстве и в браузере.
             </small>
           </label>
+          {profile && pushWarning && (
+            <p className="error" role="alert">
+              {pushWarning}
+            </p>
+          )}
+          {profile && (
+            <NotificationHelp open={helpOpen} onToggle={setHelpOpen} />
+          )}
           <label className="field">
             <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
             <input

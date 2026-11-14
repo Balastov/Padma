@@ -1,0 +1,112 @@
+/* Unread counter: brand pink-violet so it stands out on glass panels. */
+.unread-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #ef5cb1, #8055f4);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 4px 12px #ef5cb166;
+  pointer-events: none;
+}
+/* Pinned to the corner of an icon button or a menu item. */
+.unread-badge--corner {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+.chat-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 120;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-floating);
+  animation: chat-toast-in 0.25s ease-out;
+}
+/* Opaque enough that page text does not show through. */
+.chat-toast.glass-panel {
+  background: #fff;
+}
+.chat-toast__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #ef5cb1, #8055f4);
+}
+.chat-toast__body {
+  flex: 1;
+  min-width: 0;
+}
+.chat-toast__body small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.chat-toast__body strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.chat-toast__body p {
+  margin: 4px 0 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.chat-toast__close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+}
+@keyframes chat-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-toast {
+    animation: none;
+  }
+}
+/* Above the mobile bottom menu. */
+@media (max-width: 900px) {
+  .chat-toast {
+    right: 16px;
+    left: 16px;
+    width: auto;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
+.unread-anchor {
+  position: relative;
+  display: inline-flex;
+}
+/* Menu labels are hidden on narrow screens; the counter stays. */
+.sidebar nav a .unread-anchor {
+  display: inline-flex;
+}
+.sidebar nav a .unread-badge {
+  display: inline-grid;
+  font-size: 11px;
+}

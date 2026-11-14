@@ -202,6 +202,7 @@
   font-size: 13px;
 }
 .messages__icon {
+  position: relative;
   width: 48px;
   height: 48px;
   border-radius: 16px;

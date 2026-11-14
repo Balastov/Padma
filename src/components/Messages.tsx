@@ -5,11 +5,23 @@ import type { Message, User } from '../api'
 import { uploadAll } from '../files'
 import { FileLinks, FilePicker, PendingFiles } from './Attachments'
 import Avatar from './Avatar'
+import { badgeText, unreadLabel, useChatUnread } from '../chatUnread'
 
-export default function Messages({ user }: { user: User }) {
-  const [open, setOpen] = useState(false)
+export default function Messages({
+  user,
+  initialPeer = '',
+  initialOpen = false,
+}: {
+  user: User
+  /** Opened from a notification about this peer's message. */
+  initialPeer?: string
+  initialOpen?: boolean
+}) {
+  const chat = useChatUnread()
+  const { refresh: refreshUnread, setActivePeer } = chat
+  const [open, setOpen] = useState(initialOpen)
   const [peers, setPeers] = useState<User[]>([])
-  const [selected, setSelected] = useState('')
+  const [selected, setSelected] = useState(initialPeer)
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
   const [attached, setAttached] = useState<File[]>([])
@@ -46,14 +58,19 @@ export default function Messages({ user }: { user: User }) {
 
   useEffect(() => {
     if (!open || !peerId || !available) return
-    let active = true
+    let active = true,
+      last = ''
+    setActivePeer(peerId)
     const refresh = () =>
       api<Message[]>('/messages/' + peerId)
         .then((data) => {
-          if (active) {
-            setMessages(data)
-            setError('')
-          }
+          if (!active) return
+          setMessages(data)
+          setError('')
+          // Reading the thread on the server clears its unread counter.
+          const newest = data.at(-1)?.id || ''
+          if (newest !== last) refreshUnread()
+          last = newest
         })
         .catch((e) => {
           if (active) setError(e.message)
@@ -63,8 +80,9 @@ export default function Messages({ user }: { user: User }) {
     return () => {
       active = false
       clearInterval(timer)
+      setActivePeer(null)
     }
-  }, [open, peerId, available])
+  }, [open, peerId, available, refreshUnread, setActivePeer])
 
   useEffect(() => {
     thread.current?.scrollTo({ top: thread.current.scrollHeight })
@@ -93,11 +111,24 @@ export default function Messages({ user }: { user: User }) {
       <button
         type="button"
         className="messages__toggle"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          // Open the conversation with new messages first.
+          if (!open && !selected) {
+            const waiting = peers.find((p) => chat.peers[p.id])
+            if (waiting) setSelected(waiting.id)
+          }
+          setOpen(!open)
+        }}
         aria-expanded={open}
       >
         <span className="messages__icon">
           <MessageCircle size={26} />
+          {chat.total > 0 && (
+            <span className="unread-badge unread-badge--corner">
+              {badgeText(chat.total)}
+              <span className="sr-only"> непрочитанных</span>
+            </span>
+          )}
         </span>
         <span>
           <strong>{peer ? `Чат · ${fullName(peer)}` : 'Чат'}</strong>
@@ -129,6 +160,7 @@ export default function Messages({ user }: { user: User }) {
                 {peers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {fullName(p)}
+                    {p.id === peerId ? '' : unreadLabel(chat.peers[p.id])}
                   </option>
                 ))}
               </select>

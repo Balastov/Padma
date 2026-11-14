@@ -5,6 +5,7 @@ import type { User } from './api'
 import LoginPage from './pages/LoginPage'
 import TeacherPage from './pages/TeacherPage'
 import NotificationPrompt from './components/NotificationPrompt'
+import ChatNotifier from './components/ChatNotifier'
 import AppBackground from './components/AppBackground'
 import { AppearanceContext } from './appearance'
 import type { Appearance, Background } from './appearance'
@@ -217,11 +218,13 @@ export default function App() {
             !user ? (
               <Navigate to="/" replace />
             ) : isStaff(user) ? (
-              <TeacherPage
-                user={user}
-                onLogout={logout}
-                onUserChange={setUser}
-              />
+              <ChatNotifier key={user.id} chatHome="/teacher">
+                <TeacherPage
+                  user={user}
+                  onLogout={logout}
+                  onUserChange={setUser}
+                />
+              </ChatNotifier>
             ) : (
               <Navigate to="/today" replace />
             )
@@ -235,11 +238,13 @@ export default function App() {
             ) : isStaff(user) ? (
               <Navigate to="/teacher" replace />
             ) : (
-              <StudentRoutes
-                user={user}
-                onLogout={logout}
-                onUserChange={setUser}
-              />
+              <ChatNotifier key={user.id}>
+                <StudentRoutes
+                  user={user}
+                  onLogout={logout}
+                  onUserChange={setUser}
+                />
+              </ChatNotifier>
             )
           }
         />

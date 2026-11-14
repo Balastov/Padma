@@ -54,6 +54,13 @@ export async function sendPushToUser(db, userId, payload) {
           db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(
             sub.endpoint,
           )
+        } else {
+          // Without this a broken push setup fails silently.
+          console.error(
+            'Не удалось отправить уведомление',
+            new URL(sub.endpoint).host,
+            status || error?.code || error?.message,
+          )
         }
       }
     }),

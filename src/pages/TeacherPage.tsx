@@ -32,6 +32,7 @@ import type { LessonSlot } from '../components/Calendar'
 import Modal from '../components/Modal'
 import ConflictNotice from '../components/ConflictNotice'
 import Messages from '../components/Messages'
+import { badgeText, useChatUnread } from '../chatUnread'
 import UsersPage from './UsersPage'
 import AppearanceSettings from '../components/AppearanceSettings'
 import EventPage from './EventPage'
@@ -67,6 +68,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   } | null>(null)
   const [moveBusy, setMoveBusy] = useState(false)
   const navigate = useNavigate()
+  const chat = useChatUnread()
   const refresh = useCallback(async () => {
     try {
       const [u, l, s] = await Promise.all([
@@ -159,8 +161,24 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
       <aside className="sidebar glass-panel">
         <Logo />
         <nav aria-label="Основное меню">
-          <NavLink to="/teacher" end aria-label="Сегодня" title="Сегодня">
-            <Home size={23} />
+          <NavLink
+            to="/teacher"
+            end
+            aria-label={
+              chat.total
+                ? `Сегодня, непрочитанных сообщений: ${chat.total}`
+                : 'Сегодня'
+            }
+            title="Сегодня"
+          >
+            <span className="unread-anchor">
+              <Home size={23} />
+              {chat.total > 0 && (
+                <span className="unread-badge unread-badge--corner">
+                  {badgeText(chat.total)}
+                </span>
+              )}
+            </span>
             <span>Сегодня</span>
           </NavLink>
           <NavLink to="/teacher/students" aria-label="Ученики" title="Ученики">
@@ -293,7 +311,12 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                         </div>
                       )}
                     </section>
-                    <Messages user={user} />
+                    <Messages
+                      key={chat.target?.at}
+                      user={user}
+                      initialPeer={chat.target?.peerId}
+                      initialOpen={Boolean(chat.target)}
+                    />
                   </div>
                   <Calendar
                     lessons={lessons}

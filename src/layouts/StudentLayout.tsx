@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   Home,
@@ -12,6 +11,7 @@ import type { User } from '../api'
 import Logo from '../components/Logo'
 import ProfileMenu from '../components/ProfileMenu'
 import ChatDrawer from '../components/ChatDrawer'
+import { badgeText, useChatUnread } from '../chatUnread'
 import JoinLessonButton from '../components/JoinLessonButton'
 import './StudentLayout.css'
 import '../styles/workspace.css'
@@ -23,7 +23,7 @@ export default function StudentLayout({
   user: User
   onLogout: () => Promise<void>
 }) {
-  const [chatOpen, setChatOpen] = useState(false)
+  const chat = useChatUnread()
   return (
     <div className="student-shell">
       <aside className="student-shell__sidebar glass-panel">
@@ -60,10 +60,19 @@ export default function StudentLayout({
           <button
             type="button"
             className="student-shell__chat"
-            aria-label="Чат с преподавателем"
-            onClick={() => setChatOpen(true)}
+            aria-label={
+              chat.total
+                ? `Чат с преподавателем, непрочитанных: ${chat.total}`
+                : 'Чат с преподавателем'
+            }
+            onClick={() => chat.openChat()}
           >
             <MessageCircle size={22} />
+            {chat.total > 0 && (
+              <span className="unread-badge unread-badge--corner">
+                {badgeText(chat.total)}
+              </span>
+            )}
           </button>
           <ProfileMenu user={user} onLogout={onLogout} compact />
         </header>
@@ -72,9 +81,11 @@ export default function StudentLayout({
         </div>
       </div>
       <ChatDrawer
+        key={chat.target?.at}
         user={user}
-        open={chatOpen}
-        onClose={() => setChatOpen(false)}
+        open={Boolean(chat.target)}
+        initialPeer={chat.target?.peerId}
+        onClose={chat.closeChat}
       />
     </div>
   )

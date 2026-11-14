@@ -5,19 +5,27 @@ import type { Message, User } from '../api'
 import { uploadAll } from '../files'
 import { FileLinks, FilePicker, PendingFiles } from './Attachments'
 import Avatar from './Avatar'
+import { unreadLabel, useChatUnread } from '../chatUnread'
 import './ChatDrawer.css'
 
 export default function ChatDrawer({
   user,
   open,
+  initialPeer = '',
   onClose,
 }: {
   user: User
   open: boolean
+  /** Opened from a notification about this peer's message. */
+  initialPeer?: string
   onClose: () => void
 }) {
+  const chat = useChatUnread()
+  const { refresh: refreshUnread, setActivePeer } = chat
+  // Unread at opening time: the first such peer is shown by default.
+  const [unreadAtOpen] = useState(chat.peers)
   const [peers, setPeers] = useState<User[]>([])
-  const [selected, setSelected] = useState('')
+  const [selected, setSelected] = useState(initialPeer)
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
   const [attached, setAttached] = useState<File[]>([])
@@ -27,7 +35,7 @@ export default function ChatDrawer({
   const peerId =
     selected && peers.some((p) => p.id === selected)
       ? selected
-      : peers[0]?.id || ''
+      : (peers.find((p) => unreadAtOpen[p.id]) || peers[0])?.id || ''
   const peer = peers.find((p) => p.id === peerId) || null
 
   useEffect(() => {
@@ -50,11 +58,18 @@ export default function ChatDrawer({
 
   useEffect(() => {
     if (!open || !peerId) return
-    let active = true
+    let active = true,
+      last = ''
+    setActivePeer(peerId)
     const refresh = () =>
       api<Message[]>('/messages/' + peerId)
         .then((data) => {
-          if (active) setMessages(data)
+          if (!active) return
+          setMessages(data)
+          // Reading the thread on the server clears its unread counter.
+          const newest = data.at(-1)?.id || ''
+          if (newest !== last) refreshUnread()
+          last = newest
         })
         .catch(() => {})
     refresh()
@@ -62,8 +77,9 @@ export default function ChatDrawer({
     return () => {
       active = false
       clearInterval(t)
+      setActivePeer(null)
     }
-  }, [open, peerId])
+  }, [open, peerId, refreshUnread, setActivePeer])
 
   useEffect(() => {
     thread.current?.scrollTo(0, thread.current.scrollHeight)
@@ -121,6 +137,7 @@ export default function ChatDrawer({
               {peers.map((p) => (
                 <option key={p.id} value={p.id}>
                   {fullName(p)}
+                  {p.id === peerId ? '' : unreadLabel(chat.peers[p.id])}
                 </option>
               ))}
             </select>

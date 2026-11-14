@@ -64,7 +64,12 @@ export default function NotificationPrompt({
           ещё много всего полезного — даже когда Padma свёрнута или добавлена
           на экран «Домой».
         </p>
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error" role="alert">
+            {error}. Как снять запрет — в профиле, в инструкции под пунктом
+            «Уведомления».
+          </p>
+        )}
         <label className="notify-prompt__check">
           <input
             type="checkbox"

@@ -72,7 +72,7 @@ export async function enablePushSubscription() {
   if (!pushSupported()) throw new Error('Уведомления не поддерживаются')
   const permission = await Notification.requestPermission()
   if (permission !== 'granted')
-    throw new Error('Разрешите уведомления в настройках браузера')
+    throw new Error('Браузер запретил уведомления для Padma')
   const registration = await registerPushWorker()
   if (!registration) throw new Error('Не удалось зарегистрировать уведомления')
   await navigator.serviceWorker.ready

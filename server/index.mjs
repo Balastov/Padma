@@ -44,6 +44,7 @@ import {
   isManagerRoles,
 } from './store.mjs'
 import { loadVapidKeys, sendPushToUser } from './push.mjs'
+import { initUnread, markRead, unreadSummary } from './unread.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
 
 const fail = (status, message) => {
@@ -72,6 +73,7 @@ export function createApp({
   const db = openStore(dbPath)
   initLessons(db)
   initHomework(db)
+  initUnread(db)
   initVocab(db)
   initLexicon(db)
   initLexiconStudent(db)
@@ -667,6 +669,8 @@ export function createApp({
             })),
         )
       }
+      if (path === '/api/messages/unread' && req.method === 'GET')
+        return send(200, unreadSummary(db, user, users(), getUser))
       if (
         /^\/api\/messages\/[^/]+$/.test(path) &&
         ['GET', 'POST'].includes(req.method)
@@ -675,16 +679,19 @@ export function createApp({
           peer = getUser(peerId)
         if (!canChatWith(user, peer)) fail(403, 'Чат недоступен')
         const threadKey = messageThreadKey(user, peer)
-        if (req.method === 'GET')
+        if (req.method === 'GET') {
+          const thread = db
+            .prepare(
+              'SELECT id, studentId, senderId, text, created FROM messages WHERE threadKey=? ORDER BY created',
+            )
+            .all(threadKey)
+          // Opening the thread reads everything shown in it.
+          markRead(db, user.id, threadKey, thread.at(-1)?.created)
           return send(
             200,
-            db
-              .prepare(
-                'SELECT id, studentId, senderId, text, created FROM messages WHERE threadKey=? ORDER BY created',
-              )
-              .all(threadKey)
-              .map((m) => ({ ...m, files: listFiles(db, 'chat', m.id) })),
+            thread.map((m) => ({ ...m, files: listFiles(db, 'chat', m.id) })),
           )
+        }
         const data = await body(req),
           message = text(data.text, 2000),
           fileIds = Array.isArray(data.fileIds) ? data.fileIds : []
@@ -711,6 +718,8 @@ export function createApp({
             threadKey,
           )
           attachFiles(db, user, fileIds, 'chat', result.id)
+          // Replying means the earlier messages were read.
+          markRead(db, user.id, threadKey, result.created)
           db.exec('COMMIT')
         } catch (error) {
           db.exec('ROLLBACK')
@@ -721,7 +730,10 @@ export function createApp({
         void sendPushToUser(db, peer.id, {
           title: 'Новое сообщение',
           body: `${senderName}: ${message.slice(0, 120) || 'файл'}`,
-          url: openPath,
+          url: `${openPath}?chat=${encodeURIComponent(user.id)}`,
+          // One notification per sender; the app badge shows all unread.
+          tag: 'chat-' + user.id,
+          unread: unreadSummary(db, peer, users(), getUser).total,
         })
         return send(201, { ...result, files: listFiles(db, 'chat', result.id) })
       }
