@@ -1,5 +1,7 @@
 import type { Recurrence } from '../api'
 import { WEEKDAYS, addDays, everyLabel } from '../lessonSeries'
+import { withStart } from '../lessonTime'
+import { EndTimeSelect } from './LessonTimeFields'
 import './RecurrenceFields.css'
 
 type Props = {
@@ -17,7 +19,7 @@ export default function RecurrenceFields({
   function toggleDay(weekday: number) {
     const on = value.days.some((d) => d.weekday === weekday)
     if (on && value.days.length === 1) return
-    const template = value.days[0] || { start: '14:00', end: '14:50' }
+    const template = value.days[0] || { start: '14:00', end: '15:00' }
     set({
       days: on
         ? value.days.filter((d) => d.weekday !== weekday)
@@ -30,7 +32,11 @@ export default function RecurrenceFields({
   const setTime = (weekday: number, key: 'start' | 'end', time: string) =>
     set({
       days: value.days.map((d) =>
-        d.weekday === weekday ? { ...d, [key]: time } : d,
+        d.weekday !== weekday
+          ? d
+          : key === 'start'
+            ? { ...d, ...withStart(d.start, d.end, time) }
+            : { ...d, end: time },
       ),
     })
   return (
@@ -77,12 +83,11 @@ export default function RecurrenceFields({
               onChange={(e) => setTime(d.weekday, 'start', e.target.value)}
             />
             <span aria-hidden="true">–</span>
-            <input
-              required
-              type="time"
-              aria-label={`${WEEKDAYS[d.weekday - 1]}: окончание`}
-              value={d.end}
-              onChange={(e) => setTime(d.weekday, 'end', e.target.value)}
+            <EndTimeSelect
+              start={d.start}
+              end={d.end}
+              label={`${WEEKDAYS[d.weekday - 1]}: окончание`}
+              onChange={(time) => setTime(d.weekday, 'end', time)}
             />
           </div>
         ))}

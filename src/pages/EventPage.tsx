@@ -2,12 +2,14 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarPlus } from 'lucide-react'
-import { ApiError, api, moscowToday, dateKey, fullName } from '../api'
+import { ApiError, api, fullName } from '../api'
 import type { Lesson, LessonConflict, Recurrence, User } from '../api'
 import Calendar from '../components/Calendar'
 import ConflictNotice from '../components/ConflictNotice'
+import LessonTimeFields from '../components/LessonTimeFields'
 import RecurrenceFields from '../components/RecurrenceFields'
 import { newRecurrence } from '../lessonSeries'
+import { suggestedLesson } from '../lessonTime'
 export default function EventPage({
   users,
   lessons,
@@ -22,14 +24,12 @@ export default function EventPage({
   const students = users.filter(
     (u) => u.roles.includes('student') && u.teacherId,
   )
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     studentId: students[0]?.id || '',
-    date: params.get('date') || dateKey(moscowToday()),
-    start: '14:00',
-    end: '14:50',
+    ...suggestedLesson(params.get('date')),
     title: '',
     note: '',
-  })
+  }))
   const [recurrence, setRecurrence] = useState<Recurrence | null>(null)
   const [conflicts, setConflicts] = useState<LessonConflict[]>([])
   const [error, setError] = useState(''),
@@ -37,6 +37,10 @@ export default function EventPage({
   const field = (key: string, value: unknown) => {
     setConflicts([])
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+  const setTimes = (times: { start: string; end: string }) => {
+    setConflicts([])
+    setForm((prev) => ({ ...prev, ...times }))
   }
   async function save(mode?: 'skip' | 'overlap') {
     setBusy(true)
@@ -108,26 +112,11 @@ export default function EventPage({
                 />
               </label>
               {!recurrence && (
-                <div className="form-two">
-                  <label className="field">
-                    <span>Начало *</span>
-                    <input
-                      required
-                      type="time"
-                      value={form.start}
-                      onChange={(e) => field('start', e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Окончание *</span>
-                    <input
-                      required
-                      type="time"
-                      value={form.end}
-                      onChange={(e) => field('end', e.target.value)}
-                    />
-                  </label>
-                </div>
+                <LessonTimeFields
+                  start={form.start}
+                  end={form.end}
+                  onChange={setTimes}
+                />
               )}
               <label className="toggle-label">
                 <span>Повторять урок</span>

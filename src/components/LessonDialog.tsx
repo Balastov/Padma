@@ -17,9 +17,10 @@ import type {
   LessonStatus,
   User,
 } from '../api'
-import { describeRule } from '../lessonSeries'
+import { describeRule, moveFollowingHint } from '../lessonSeries'
 import Modal from './Modal'
 import ConflictNotice from './ConflictNotice'
+import LessonTimeFields from './LessonTimeFields'
 
 type Props = {
   lesson: Lesson
@@ -29,6 +30,7 @@ type Props = {
   onChanged: () => Promise<void>
 }
 type Scope = 'this' | 'following' | 'all'
+type ConflictMode = 'skip' | 'overlap'
 const scopes: [Scope, string][] = [
   ['this', 'Только этот'],
   ['following', 'Этот и следующие'],
@@ -51,13 +53,20 @@ export default function LessonDialog({
     note: lesson.note,
   })
   const [scope, setScope] = useState<Scope>('this')
+  const [moveScope, setMoveScope] = useState<'this' | 'following'>('this')
   const [conflicts, setConflicts] = useState<LessonConflict[]>([])
-  const [retry, setRetry] = useState<(() => void) | null>(null)
+  const [retry, setRetry] = useState<((mode: ConflictMode) => void) | null>(
+    null,
+  )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const field = (key: keyof typeof form, value: string) => {
     setConflicts([])
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+  const setTimes = (times: { start: string; end: string }) => {
+    setConflicts([])
+    setForm((prev) => ({ ...prev, ...times }))
   }
   function switchMode(next: typeof mode) {
     setConflicts([])
@@ -65,8 +74,8 @@ export default function LessonDialog({
     setMode(next)
   }
   async function run(
-    action: (conflicts?: 'overlap') => Promise<unknown>,
-    conflictMode?: 'overlap',
+    action: (conflicts?: ConflictMode) => Promise<unknown>,
+    conflictMode?: ConflictMode,
   ) {
     setBusy(true)
     setError('')
@@ -78,7 +87,7 @@ export default function LessonDialog({
     } catch (e) {
       if (e instanceof ApiError && e.conflicts.length) {
         setConflicts(e.conflicts)
-        setRetry(() => () => void run(action, 'overlap'))
+        setRetry(() => (next: ConflictMode) => void run(action, next))
       } else setError((e as Error).message)
     } finally {
       setBusy(false)
@@ -88,18 +97,42 @@ export default function LessonDialog({
     run((conflicts) =>
       api(`/lessons/${lesson.id}/status`, 'POST', { status, conflicts }),
     )
+  const started = !lessonIsUpcoming({ ...lesson, status: 'scheduled' })
+  // Only a future scheduled lesson can take the following lessons along.
+  const canFollow =
+    Boolean(series) &&
+    lesson.status === 'scheduled' &&
+    new Date(`${lesson.date}T${lesson.start}:00+03:00`).getTime() > Date.now()
+  const following = canFollow && moveScope === 'following'
+  const hint =
+    following && series
+      ? moveFollowingHint(series, lesson.occurrence, form)
+      : null
   function saveEdit(e: FormEvent) {
     e.preventDefault()
     void run((conflicts) =>
-      api(`/lessons/${lesson.id}`, 'PATCH', { ...form, conflicts }),
+      api(`/lessons/${lesson.id}`, 'PATCH', {
+        ...form,
+        scope: following ? 'following' : 'this',
+        conflicts,
+      }),
     )
   }
-  const started = !lessonIsUpcoming({ ...lesson, status: 'scheduled' })
+  // The lesson's own time cannot be skipped, only the following lessons.
+  const canSkip =
+    mode === 'edit' &&
+    following &&
+    !conflicts.some((c) => c.date === form.date && c.start === form.start)
   const student = users.find((u) => u.id === lesson.studentId)
   const feedback = (
     <>
       {conflicts.length > 0 && retry && (
-        <ConflictNotice conflicts={conflicts} busy={busy} onOverlap={retry} />
+        <ConflictNotice
+          conflicts={conflicts}
+          busy={busy}
+          onSkip={canSkip ? () => retry('skip') : undefined}
+          onOverlap={() => retry('overlap')}
+        />
       )}
       {error && (
         <p className="error" role="alert">
@@ -167,7 +200,7 @@ export default function LessonDialog({
             >
               Изменить урок
             </button>
-            {series && (
+            {series ? (
               <button
                 className="button-secondary"
                 onClick={() => {
@@ -176,6 +209,17 @@ export default function LessonDialog({
                 }}
               >
                 Изменить серию
+              </button>
+            ) : (
+              <button
+                className="button-secondary"
+                onClick={() => {
+                  onClose()
+                  navigate(`/teacher/lessons/${lesson.id}/series`)
+                }}
+              >
+                <Repeat size={17} aria-hidden="true" />
+                Сделать серией
               </button>
             )}
             <button
@@ -209,26 +253,40 @@ export default function LessonDialog({
               onChange={(e) => field('date', e.target.value)}
             />
           </label>
-          <div className="form-two">
-            <label className="field">
-              <span>Начало *</span>
-              <input
-                required
-                type="time"
-                value={form.start}
-                onChange={(e) => field('start', e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Окончание *</span>
-              <input
-                required
-                type="time"
-                value={form.end}
-                onChange={(e) => field('end', e.target.value)}
-              />
-            </label>
-          </div>
+          <LessonTimeFields
+            start={form.start}
+            end={form.end}
+            onChange={setTimes}
+          />
+          {canFollow && (
+            <div className="field">
+              <span>Перенести</span>
+              <div className="segmented lesson-dialog__scope">
+                {(
+                  [
+                    ['this', 'Только этот'],
+                    ['following', 'Этот и следующие'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={moveScope === value}
+                    className={moveScope === value ? 'active' : ''}
+                    onClick={() => {
+                      setConflicts([])
+                      setMoveScope(value)
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {hint && (
+                <small className={hint.ok ? '' : 'error'}>{hint.text}</small>
+              )}
+            </div>
+          )}
           <label className="field">
             <span>Тема урока</span>
             <input
@@ -255,7 +313,10 @@ export default function LessonDialog({
           </label>
           {feedback}
           <div className="form-actions">
-            <button className="button-primary" disabled={busy}>
+            <button
+              className="button-primary"
+              disabled={busy || hint?.ok === false}
+            >
               {busy ? 'Сохраняем…' : 'Сохранить урок'}
             </button>
             <button

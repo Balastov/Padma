@@ -38,6 +38,8 @@ import AppearanceSettings from '../components/AppearanceSettings'
 import EventPage from './EventPage'
 import TeacherLibraryPage from './teacher/TeacherLibraryPage'
 import SeriesEditPage from './SeriesEditPage'
+import SeriesFromLessonPage from './SeriesFromLessonPage'
+import { moveFollowingHint } from '../lessonSeries'
 import LexiconLayout from './teacher/lexicon/LexiconLayout'
 import DictionaryAllPage from './teacher/lexicon/DictionaryAllPage'
 import TopicsManagePage from './teacher/lexicon/TopicsManagePage'
@@ -53,6 +55,8 @@ type Props = {
   onLogout: () => Promise<void>
   onUserChange: (user: User) => void
 }
+type MoveScope = 'this' | 'following'
+
 export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   const [users, setUsers] = useState<User[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
@@ -65,6 +69,9 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
     slot: LessonSlot
     conflicts: LessonConflict[]
     error: string
+    /** A series lesson: «только этот / этот и следующие» is not chosen yet. */
+    ask?: boolean
+    scope?: MoveScope
   } | null>(null)
   const [moveBusy, setMoveBusy] = useState(false)
   const navigate = useNavigate()
@@ -124,20 +131,24 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   const next = lessons.find((l) => lessonIsUpcoming(l))
   const nextStudent = users.find((u) => u.id === next?.studentId)
   // Shown in the new place at once; refresh() restores it on failure.
-  async function moveLesson(
-    lesson: Lesson,
-    slot: LessonSlot,
-    conflicts?: 'overlap',
-  ) {
+  const showMoved = (lesson: Lesson, slot: LessonSlot) =>
     setLessons((prev) =>
       prev.map((l) => (l.id === lesson.id ? { ...l, ...slot } : l)),
     )
+  async function moveLesson(
+    lesson: Lesson,
+    slot: LessonSlot,
+    conflicts?: 'skip' | 'overlap',
+    scope: MoveScope = 'this',
+  ) {
+    showMoved(lesson, slot)
     setMoveBusy(true)
     try {
       await api(`/lessons/${lesson.id}`, 'PATCH', {
         ...slot,
         title: lesson.title,
         note: lesson.note,
+        scope,
         conflicts,
       })
       setMoving(null)
@@ -148,12 +159,30 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
         slot,
         conflicts: found,
         error: found.length ? '' : (e as Error).message,
+        scope,
       })
     } finally {
       setMoveBusy(false)
       await refresh()
     }
   }
+  // A future series lesson asks whether the following lessons move too.
+  function dropLesson(lesson: Lesson, slot: LessonSlot) {
+    const later =
+      new Date(`${lesson.date}T${lesson.start}:00+03:00`).getTime() > Date.now()
+    if (!lesson.seriesId || !later) return void moveLesson(lesson, slot)
+    showMoved(lesson, slot)
+    setMoving({ lesson, slot, conflicts: [], error: '', ask: true })
+  }
+  function closeMove() {
+    setMoving(null)
+    void refresh()
+  }
+  const movingSeries = series.find((s) => s.id === moving?.lesson.seriesId)
+  const moveHint =
+    moving && movingSeries
+      ? moveFollowingHint(movingSeries, moving.lesson.occurrence, moving.slot)
+      : null
   const create = (date?: string) =>
     navigate('/teacher/new' + (date ? '?date=' + date : ''))
   return (
@@ -193,11 +222,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
             <BookOpen size={23} />
             <span>Домашние задания</span>
           </NavLink>
-          <NavLink
-            to="/teacher/lexicon"
-            aria-label="Лексика"
-            title="Лексика"
-          >
+          <NavLink to="/teacher/lexicon" aria-label="Лексика" title="Лексика">
             <Languages size={23} />
             <span>Лексика</span>
           </NavLink>
@@ -323,7 +348,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                     users={users}
                     onNew={create}
                     onSelect={setSelected}
-                    onMove={(lesson, slot) => void moveLesson(lesson, slot)}
+                    onMove={dropLesson}
                   />
                 </>
               }
@@ -374,6 +399,19 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               }
             />
             <Route
+              path="lessons/:id/series"
+              element={
+                <SeriesFromLessonPage
+                  users={users}
+                  lessons={lessons}
+                  onSaved={async () => {
+                    await refresh()
+                    navigate('/teacher')
+                  }}
+                />
+              }
+            />
+            <Route
               path="settings"
               element={
                 <>
@@ -389,10 +427,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               }
             />
             <Route path="lexicon" element={<LexiconLayout />}>
-              <Route
-                index
-                element={<Navigate to="dictionary" replace />}
-              />
+              <Route index element={<Navigate to="dictionary" replace />} />
               <Route path="dictionary" element={<DictionaryAllPage />} />
               <Route
                 path="dictionary/topics"
@@ -476,7 +511,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
           />
         )}
         {moving && (
-          <Modal titleId="move-title" onClose={() => setMoving(null)}>
+          <Modal titleId="move-title" onClose={closeMove}>
             <p className="eyebrow">ПЕРЕНОС ЗАНЯТИЯ</p>
             <h2 id="move-title">{moving.lesson.title}</h2>
             <p>
@@ -486,12 +521,66 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               {friendlyDate(moving.slot.date)} · {moving.slot.start}–
               {moving.slot.end}
             </p>
+            {moving.ask && (
+              <>
+                <div className="form-actions">
+                  <button
+                    className="button-primary"
+                    disabled={moveBusy}
+                    onClick={() => void moveLesson(moving.lesson, moving.slot)}
+                  >
+                    Только этот
+                  </button>
+                  <button
+                    className="button-secondary"
+                    disabled={moveBusy || moveHint?.ok === false}
+                    onClick={() =>
+                      void moveLesson(
+                        moving.lesson,
+                        moving.slot,
+                        undefined,
+                        'following',
+                      )
+                    }
+                  >
+                    Этот и следующие
+                  </button>
+                </div>
+                {moveHint && (
+                  <p className={moveHint.ok ? 'caption' : 'caption error'}>
+                    «Этот и следующие»: {moveHint.text[0].toLowerCase()}
+                    {moveHint.text.slice(1)}
+                  </p>
+                )}
+              </>
+            )}
             {moving.conflicts.length > 0 && (
               <ConflictNotice
                 conflicts={moving.conflicts}
                 busy={moveBusy}
+                onSkip={
+                  moving.scope === 'following' &&
+                  !moving.conflicts.some(
+                    (c) =>
+                      c.date === moving.slot.date &&
+                      c.start === moving.slot.start,
+                  )
+                    ? () =>
+                        void moveLesson(
+                          moving.lesson,
+                          moving.slot,
+                          'skip',
+                          'following',
+                        )
+                    : undefined
+                }
                 onOverlap={() =>
-                  void moveLesson(moving.lesson, moving.slot, 'overlap')
+                  void moveLesson(
+                    moving.lesson,
+                    moving.slot,
+                    'overlap',
+                    moving.scope,
+                  )
                 }
               />
             )}
@@ -504,7 +593,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               <button
                 className="button-secondary"
                 autoFocus
-                onClick={() => setMoving(null)}
+                onClick={closeMove}
               >
                 Оставить как было
               </button>

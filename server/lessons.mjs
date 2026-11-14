@@ -7,6 +7,10 @@ import { addDays } from './timezone.mjs'
 // its rule slot in `occurrence` ("YYYY-MM-DDTHH:MM-HH:MM"), so a lesson moved
 // "only this time" is still recognised as that slot.
 //
+// A pinned lesson keeps its own date and time when the rule changes: the first
+// lesson of a series made from a single lesson, or a lesson moved together
+// with the following ones. Its `occurrence` is its own slot.
+//
 // Statuses: scheduled, cancelled, noshow. Lesson topics follow the series plan
 // by order of scheduled lessons, so cancelling, no-show or deleting shifts
 // later topics. A count-limited series is a package of N lessons: cancelled
@@ -48,6 +52,7 @@ export function initLessons(db) {
     ['status', `status TEXT NOT NULL DEFAULT 'scheduled'`],
     ['seq', 'seq INTEGER NOT NULL DEFAULT 0'],
     ['customTitle', 'customTitle INTEGER NOT NULL DEFAULT 0'],
+    ['pinned', 'pinned INTEGER NOT NULL DEFAULT 0'],
   ])
     if (!columns.includes(name))
       db.exec(`ALTER TABLE lessons ADD COLUMN ${sql}`)
@@ -88,6 +93,7 @@ const slotKey = (date, start, end) => `${date}T${start}-${end}`
 const publicLesson = (row) => ({
   ...row,
   customTitle: Boolean(row.customTitle),
+  pinned: Boolean(row.pinned),
 })
 function loadSeries(db, id) {
   const row = db.prepare('SELECT * FROM lesson_series WHERE id=?').get(id)
@@ -229,7 +235,7 @@ function materialize(db, s, mode, now) {
     .prepare('SELECT * FROM lessons WHERE seriesId=? ORDER BY date,start')
     .all(s.id)
   const pool = all.filter(
-    (l) => l.status === 'scheduled' && lessonKey(l) > now.key,
+    (l) => !l.pinned && l.status === 'scheduled' && lessonKey(l) > now.key,
   )
   const fixed = all.filter((l) => !pool.includes(l))
   const fixedSlots = new Set(fixed.map((l) => l.occurrence))
@@ -337,6 +343,98 @@ function extendOpenSeries(db, now) {
       materialize(db, s, s.conflictMode, now)
     }
   })
+}
+
+// "This and following": the old series ends before the lesson, the rest moves
+// to a new series that continues numbering, plan topics and the package.
+// Returns the series that now holds the lesson and the following ones.
+function splitAt(db, s, from, startDate) {
+  const before = db
+    .prepare(
+      'SELECT status,customTitle FROM lessons WHERE seriesId=? AND occurrence<?',
+    )
+    .all(s.id, from.occurrence)
+  if (!before.length) return Object.assign(s, { startDate })
+  const next = {
+    ...s,
+    id: randomUUID(),
+    startDate,
+    skipped: s.skipped.filter((key) => key >= from.occurrence),
+    seqOffset:
+      s.seqOffset + before.filter((l) => l.status === 'scheduled').length,
+    planOffset:
+      s.planOffset +
+      before.filter((l) => l.status === 'scheduled' && !l.customTitle).length,
+    countOffset:
+      s.countOffset + before.filter((l) => l.status !== 'cancelled').length,
+  }
+  s.endType = 'until'
+  s.until = addDays(from.occurrence.slice(0, 10), -1)
+  s.count = null
+  saveSeries(db, s)
+  saveSeries(db, next, true)
+  db.prepare(
+    'UPDATE lessons SET seriesId=? WHERE seriesId=? AND occurrence>=?',
+  ).run(next.id, s.id, from.occurrence)
+  renumber(db, s)
+  return next
+}
+
+// Moves a lesson together with the following lessons of its weekday: from
+// this lesson on, that weekday of the rule becomes the new weekday and time.
+// Other weekdays stay as they are. The lesson itself is pinned to the new
+// time; the lessons in between that weekday's old and new date are dropped.
+// Returns false when the lesson's weekday is not in the rule (only the lesson
+// itself moves then).
+function moveFollowing(db, s, lesson, { date, start, end }, mode, now) {
+  const from = lesson.occurrence.slice(0, 10)
+  const weekday = isoWeekday(from),
+    target = isoWeekday(date)
+  if (!s.days.some((d) => d.weekday === weekday)) return false
+  if (target !== weekday && s.days.some((d) => d.weekday === target))
+    fail(
+      400,
+      'В этот день недели в серии уже есть урок. Перенесите только этот урок или измените серию.',
+    )
+  const days = [
+    ...s.days.filter((d) => d.weekday !== weekday),
+    { weekday: target, start, end },
+  ].sort((a, b) => a.weekday - b.weekday)
+  // A one-day rule repeating every few weeks keeps the new date's rhythm.
+  let startDate = from
+  if (days.length === 1 && s.everyWeeks > 1) {
+    startDate = mondayOf(date)
+    while (startDate > from) startDate = addDays(startDate, -7 * s.everyWeeks)
+  }
+  const next = splitAt(db, s, lesson, startDate)
+  next.days = days
+  next.activeFrom = [next.activeFrom, `${from}T00:00`, now.key].sort().pop()
+  const skipped = new Set(next.skipped)
+  for (const slot of occurrences(next)) {
+    if (slot.date >= date) break
+    if (slot.weekday === target && slot.date >= from) skipped.add(slot.key)
+  }
+  next.skipped = [...skipped]
+  if (mode !== 'fail') next.conflictMode = mode
+  db.prepare('UPDATE lessons SET occurrence=?,pinned=1 WHERE id=?').run(
+    slotKey(date, start, end),
+    lesson.id,
+  )
+  materialize(db, next, mode, now)
+  return true
+}
+
+// The lesson's own conflict cannot be skipped: it is reported together with
+// the conflicts of the other slots, or alone.
+function withOwnConflict(own, action) {
+  try {
+    action()
+  } catch (error) {
+    if (own.length && error.details?.conflicts)
+      error.details.conflicts.unshift(...own)
+    throw error
+  }
+  if (own.length) conflictError(own)
 }
 
 function readRule(data, startDate) {
@@ -545,43 +643,8 @@ export async function lessonsRoute({
       ? readStartDate(data.startDate || from.date, now)
       : s.startDate
     const rule = readRule(data, startDate)
-    const before = from
-      ? db
-          .prepare(
-            'SELECT status,customTitle FROM lessons WHERE seriesId=? AND occurrence<?',
-          )
-          .all(s.id, from.occurrence)
-      : []
     const target = transaction(db, () => {
-      let next = s
-      if (before.length) {
-        // "This and following": the old series ends before the lesson,
-        // the rest moves to a new series that continues numbering and count.
-        next = {
-          ...s,
-          id: randomUUID(),
-          startDate,
-          skipped: s.skipped.filter((key) => key >= from.occurrence),
-          seqOffset:
-            s.seqOffset + before.filter((l) => l.status === 'scheduled').length,
-          planOffset:
-            s.planOffset +
-            before.filter((l) => l.status === 'scheduled' && !l.customTitle)
-              .length,
-          countOffset:
-            s.countOffset +
-            before.filter((l) => l.status !== 'cancelled').length,
-        }
-        s.endType = 'until'
-        s.until = addDays(from.occurrence.slice(0, 10), -1)
-        s.count = null
-        saveSeries(db, s)
-        saveSeries(db, next, true)
-        db.prepare(
-          'UPDATE lessons SET seriesId=? WHERE seriesId=? AND occurrence>=?',
-        ).run(next.id, s.id, from.occurrence)
-        renumber(db, s)
-      } else next.startDate = startDate
+      const next = from ? splitAt(db, s, from, startDate) : s
       Object.assign(next, rule, { title, note })
       if (next.activeFrom < now.key) next.activeFrom = now.key
       if (next.endType === 'count' && next.count <= next.countOffset)
@@ -597,8 +660,9 @@ export async function lessonsRoute({
     return true
   }
   const statusMatch = /^\/api\/lessons\/([^/]+)\/status$/.exec(path)
+  const toSeriesMatch = /^\/api\/lessons\/([^/]+)\/series$/.exec(path)
   const lessonMatch = /^\/api\/lessons\/([^/]+)$/.exec(path)
-  const id = statusMatch?.[1] || lessonMatch?.[1]
+  const id = statusMatch?.[1] || toSeriesMatch?.[1] || lessonMatch?.[1]
   if (!id) return false
   const lesson = db.prepare('SELECT * FROM lessons WHERE id=?').get(id)
   if (!lesson) fail(404, 'Занятие не найдено')
@@ -622,6 +686,51 @@ export async function lessonsRoute({
     )
     return true
   }
+  if (toSeriesMatch && req.method === 'POST') {
+    // A single lesson becomes the first lesson of a new series. It keeps its
+    // own (possibly changed) date and time; the rule starts after that day.
+    if (series) fail(400, 'Урок уже входит в серию')
+    const data = await body(req)
+    const date = text(data.date, 10),
+      start = text(data.start, 5),
+      end = text(data.end, 5)
+    if (!validDate(date) || !validTimes(start, end))
+      fail(400, 'Укажите корректные дату и время: конец позже начала')
+    const startDate = readStartDate(date, now)
+    const mode = readMode(data.conflicts)
+    const title = text(data.title) || DEFAULT_TITLE,
+      note = text(data.note, 500)
+    const s = {
+      id: randomUUID(),
+      studentId: lesson.studentId,
+      teacherId: lesson.teacherId,
+      startDate,
+      ...readRule(data, startDate),
+      title,
+      note,
+      skipped: [],
+      conflictMode: mode === 'overlap' ? 'overlap' : 'skip',
+      activeFrom: `${date}T24:00`,
+      seqOffset: 0,
+      planOffset: 0,
+      countOffset: 0,
+      generatedUntil: '',
+    }
+    transaction(db, () => {
+      saveSeries(db, s, true)
+      db.prepare(
+        `UPDATE lessons SET date=?,start=?,end=?,note=?,seriesId=?,occurrence=?,pinned=1,customTitle=0 WHERE id=?`,
+      ).run(date, start, end, note, s.id, slotKey(date, start, end), id)
+      const moved = { ...lesson, date, start, end }
+      const busy = lesson.status === 'scheduled' && findConflict(db, moved, id)
+      withOwnConflict(
+        busy && mode !== 'overlap' ? [conflictInfo(moved, busy)] : [],
+        () => materialize(db, s, mode, now),
+      )
+    })
+    send(201, publicSeries(s))
+    return true
+  }
   if (lessonMatch && req.method === 'PATCH') {
     const data = await body(req)
     const date = text(data.date, 10),
@@ -636,15 +745,30 @@ export async function lessonsRoute({
         (typed !== lesson.title || Boolean(lesson.customTitle))
       : false
     const title = series && !custom ? lesson.title : typed || DEFAULT_TITLE
+    const scope = data.scope || 'this'
+    if (!['this', 'following'].includes(scope))
+      fail(400, 'Выберите, какие занятия перенести')
+    const following = Boolean(series) && scope === 'following'
+    if (
+      following &&
+      (lesson.status !== 'scheduled' || lessonKey(lesson) <= now.key)
+    )
+      fail(
+        400,
+        'Вместе со следующими можно перенести только будущий запланированный урок',
+      )
+    const mode = readMode(data.conflicts)
     transaction(db, () => {
       const moved = { ...lesson, date, start, end }
-      const busy = lesson.status === 'scheduled' && findConflict(db, moved, id)
-      if (busy && readMode(data.conflicts) !== 'overlap')
-        conflictError([conflictInfo(moved, busy)])
       db.prepare(
         'UPDATE lessons SET date=?,start=?,end=?,title=?,note=?,customTitle=? WHERE id=?',
       ).run(date, start, end, title, text(data.note, 500), custom ? 1 : 0, id)
-      if (series) renumber(db, series)
+      // The following lessons move first: the lesson may take a slot that
+      // one of them leaves.
+      if (!following || !moveFollowing(db, series, lesson, moved, mode, now))
+        if (series) renumber(db, series)
+      const busy = lesson.status === 'scheduled' && findConflict(db, moved, id)
+      if (busy && mode !== 'overlap') conflictError([conflictInfo(moved, busy)])
     })
     send(
       200,

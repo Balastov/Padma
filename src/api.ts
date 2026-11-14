@@ -26,6 +26,8 @@ export type Lesson = {
   title: string
   note: string
   seriesId: string | null
+  /** Rule slot of a series lesson, "YYYY-MM-DDTHH:MM-HH:MM". */
+  occurrence: string
   status: LessonStatus
   /** Number of the lesson in its series, 0 for cancelled and no-show. */
   seq: number

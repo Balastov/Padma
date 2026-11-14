@@ -38,14 +38,30 @@
 }
 .recurrence__time {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: 32px minmax(0, 1fr) auto minmax(0, 1.4fr);
+  align-items: start;
   gap: 8px;
   font-size: 14px;
+}
+.recurrence__time > strong,
+.recurrence__time > span {
+  line-height: 50px;
 }
 .recurrence__time span {
   color: var(--text-secondary);
 }
 .recurrence__segmented {
   margin: 0;
+}
+/* Phones: the end goes under the start. */
+@media (max-width: 560px) {
+  .recurrence__time {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .recurrence__time > span {
+    display: none;
+  }
+  .recurrence__time .end-time {
+    grid-column: 2;
+  }
 }

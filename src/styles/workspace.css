@@ -800,7 +800,7 @@ input[type='checkbox'] {
     padding: 20px;
   }
   .event-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .calendar--compact .calendar__grid {
     min-width: 800px;
