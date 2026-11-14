@@ -74,7 +74,7 @@ export default function StudentLayout({
               </span>
             )}
           </button>
-          <ProfileMenu user={user} onLogout={onLogout} compact />
+          <ProfileMenu user={user} onLogout={onLogout} full />
         </header>
         <div className="student-shell__content">
           <Outlet />

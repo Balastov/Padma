@@ -8,11 +8,12 @@ import Avatar from './Avatar'
 export default function ProfileMenu({
   user,
   onLogout,
-  compact,
+  full,
 }: {
   user: User
   onLogout: () => Promise<void>
-  compact?: boolean
+  /** Larger avatar and the full name (the student header). */
+  full?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -37,12 +38,19 @@ export default function ProfileMenu({
     <div className="profile-menu" ref={ref}>
       <button
         type="button"
-        className="profile-trigger"
+        className={`profile-trigger${full ? ' profile-trigger--full' : ''}`}
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
         <Avatar user={user} />
-        {!compact && <span>{user.name}</span>}
+        {full ? (
+          <span className="profile-trigger__name">
+            <span>{user.name}</span>
+            {user.surname && <span>{user.surname}</span>}
+          </span>
+        ) : (
+          <span>{user.name}</span>
+        )}
         <ChevronDown size={18} />
       </button>
       {open && (

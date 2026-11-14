@@ -45,6 +45,7 @@ import {
 } from './store.mjs'
 import { loadVapidKeys, sendPushToUser } from './push.mjs'
 import { initUnread, markRead, unreadSummary } from './unread.mjs'
+import { assignStudentAvatars, photoProblem, studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
 
 const fail = (status, message) => {
@@ -74,6 +75,7 @@ export function createApp({
   initLessons(db)
   initHomework(db)
   initUnread(db)
+  assignStudentAvatars(db)
   initVocab(db)
   initLexicon(db)
   initLexiconStudent(db)
@@ -312,7 +314,7 @@ export function createApp({
           email = text(data.email).toLowerCase()
         const foreignPhone = Boolean(data.foreignPhone)
         const phone = normalizePhone(text(data.phone, 32), foreignPhone)
-        const photo = data.photo || ''
+        const rawPhoto = data.photo || ''
         if (!name) fail(400, 'Укажите имя')
         if (email && !emailValid(email))
           fail(400, 'Укажите корректный email')
@@ -326,13 +328,9 @@ export function createApp({
         }
         if (!email && !phone)
           fail(400, 'Укажите email или номер телефона')
-        if (
-          typeof photo !== 'string' ||
-          photo.length > 2900000 ||
-          (photo &&
-            !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo))
-        )
+        if (photoProblem(rawPhoto))
           fail(400, 'Фото: JPG, PNG или WebP до 2 МБ')
+        const photo = studentPhoto(user.roles, rawPhoto)
         const timeZone = timeZoneOf(data, user.timeZone)
         if (data.password) {
           if (
@@ -561,14 +559,9 @@ export function createApp({
           users().some((u) => u.teacherId === id)
         )
           fail(400, 'Сначала переназначьте учеников этого учителя')
-        const photo = data.photo || ''
-        if (
-          typeof photo !== 'string' ||
-          (photo &&
-            !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo))
-        )
-          fail(400, 'Фото: JPG, PNG или WebP')
-        if (photo.length > 2900000) fail(400, 'Фото слишком большое')
+        const problem = photoProblem(data.photo || '')
+        if (problem) fail(400, problem)
+        const photo = studentPhoto(roles, data.photo || '')
         const timeZone = timeZoneOf(data, old?.timeZone)
         if ((!old || data.password) && !passwordValid(data.password))
           fail(400, 'Пароль должен содержать от 8 до 128 символов')

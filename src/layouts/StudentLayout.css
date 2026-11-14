@@ -62,6 +62,10 @@
 }
 .student-shell__top .join-lesson {
   margin-right: auto;
+  flex-shrink: 0;
+}
+.student-shell__top .profile-menu {
+  min-width: 0;
 }
 .student-shell__chat {
   position: relative;

@@ -13,6 +13,7 @@ import { api, fullName, isManager, roleNames } from '../api'
 import type { Role, User } from '../api'
 import Avatar from '../components/Avatar'
 import NotificationHelp from '../components/NotificationHelp'
+import { PRESET_AVATARS, isPresetAvatar } from '../avatars'
 import {
   formatForeignPhoneInput,
   formatRuPhoneInput,
@@ -626,10 +627,35 @@ function UserEditor({
               ))}
             </fieldset>
           )}
+          {form.roles.includes('student') && (
+            <fieldset className="avatar-picker">
+              <legend>Аватарка</legend>
+              <div className="avatar-picker__grid">
+                {PRESET_AVATARS.map((src, i) => (
+                  <button
+                    key={src}
+                    type="button"
+                    className={form.photo === src ? 'is-selected' : ''}
+                    aria-pressed={form.photo === src}
+                    aria-label={`Аватарка ${i + 1}`}
+                    onClick={() => field('photo', src)}
+                  >
+                    <img src={src} alt="" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+              <small>
+                {form.photo && !isPresetAvatar(form.photo)
+                  ? 'Сейчас стоит своё фото. Выберите аватарку из набора или загрузите другое фото.'
+                  : 'Выберите аватарку из набора или загрузите своё фото.'}
+              </small>
+            </fieldset>
+          )}
           <label className="photo-upload">
             <Upload size={18} />
             <span>
-              Загрузить фото <small>JPG, PNG, WebP · до 2 МБ</small>
+              {form.roles.includes('student') ? 'Загрузить своё фото' : 'Загрузить фото'}{' '}
+              <small>JPG, PNG, WebP · до 2 МБ</small>
             </span>
             <input
               aria-label="Фото пользователя"
@@ -638,7 +664,8 @@ function UserEditor({
               onChange={(e) => photo(e.target.files?.[0])}
             />
           </label>
-          {form.photo && (
+          {/* A student always has an avatar: pick another instead. */}
+          {form.photo && !form.roles.includes('student') && (
             <button
               className="text-button"
               type="button"
