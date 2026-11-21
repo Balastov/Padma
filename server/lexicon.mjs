@@ -140,6 +140,14 @@ export function initLexicon(db) {
       added TEXT NOT NULL,
       PRIMARY KEY (subtopicId, termId)
     );
+    -- Teacher collections are built from dictionary words the same way.
+    CREATE TABLE IF NOT EXISTS lexicon_collection_terms (
+      collectionId TEXT NOT NULL REFERENCES vocab_collections(id) ON DELETE CASCADE,
+      termId TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL DEFAULT 0,
+      added TEXT NOT NULL,
+      PRIMARY KEY (collectionId, termId)
+    );
   `)
   const columns = db.prepare('PRAGMA table_info(lexicon_units)').all()
   if (!columns.some((c) => c.name === 'topicId'))
@@ -390,6 +398,57 @@ export function subtopicTerms(db, subtopicId) {
     .all(subtopicId)
 }
 
+// Words of a teacher collection in the order they were added.
+export function collectionTerms(db, collectionId) {
+  return db
+    .prepare(
+      `SELECT t.id, t.term, t.translation, t.transcription
+       FROM lexicon_collection_terms ct
+       JOIN lexicon_terms t ON t.id = ct.termId
+       WHERE ct.collectionId = ? ORDER BY ct.sortOrder, ${TERM_ORDER}`,
+    )
+    .all(collectionId)
+}
+
+// Adds known dictionary words to a link table; returns how many were new.
+function addTerms(db, table, column, ownerId, termIds) {
+  const ids = Array.isArray(termIds)
+    ? [...new Set(termIds.filter((id) => typeof id === 'string'))]
+    : []
+  if (!ids.length || ids.length > 500) fail(400, 'Отметьте от 1 до 500 слов')
+  const known = new Set(
+    db
+      .prepare(
+        `SELECT id FROM lexicon_terms WHERE id IN (${ids.map(() => '?').join(',')})`,
+      )
+      .all(...ids)
+      .map((r) => r.id),
+  )
+  if (known.size !== ids.length) fail(400, 'Некоторые слова не найдены')
+  const next = db
+    .prepare(
+      `SELECT coalesce(max(sortOrder), -1) + 1 AS n FROM ${table} WHERE ${column} = ?`,
+    )
+    .get(ownerId).n
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO ${table} (${column}, termId, sortOrder, added)
+     VALUES (?,?,?,?)`,
+  )
+  const now = new Date().toISOString()
+  let added = 0
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    ids.forEach((id, index) => {
+      added += Number(insert.run(ownerId, id, next + index, now).changes)
+    })
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+  return added
+}
+
 const publicTerm = (row) => ({
   id: row.id,
   term: row.term,
@@ -479,42 +538,13 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
     const termId = subTerms[2] && decodeURIComponent(subTerms[2])
     if (!termId && req.method === 'POST') {
       const data = await body(req, 100000)
-      const ids = Array.isArray(data.termIds)
-        ? [...new Set(data.termIds.filter((id) => typeof id === 'string'))]
-        : []
-      if (!ids.length || ids.length > 500)
-        fail(400, 'Отметьте от 1 до 500 слов')
-      const known = new Set(
-        db
-          .prepare(
-            `SELECT id FROM lexicon_terms WHERE id IN (${ids.map(() => '?').join(',')})`,
-          )
-          .all(...ids)
-          .map((r) => r.id),
+      const added = addTerms(
+        db,
+        'lexicon_subtopic_terms',
+        'subtopicId',
+        sub.id,
+        data.termIds,
       )
-      if (known.size !== ids.length) fail(400, 'Некоторые слова не найдены')
-      const next =
-        db
-          .prepare(
-            'SELECT coalesce(max(sortOrder), -1) + 1 AS n FROM lexicon_subtopic_terms WHERE subtopicId = ?',
-          )
-          .get(sub.id).n
-      const insert = db.prepare(
-        `INSERT OR IGNORE INTO lexicon_subtopic_terms (subtopicId, termId, sortOrder, added)
-         VALUES (?,?,?,?)`,
-      )
-      const now = new Date().toISOString()
-      let added = 0
-      db.exec('BEGIN IMMEDIATE')
-      try {
-        ids.forEach((id, index) => {
-          added += Number(insert.run(sub.id, id, next + index, now).changes)
-        })
-        db.exec('COMMIT')
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
-      }
       send(200, { ...sub, added, terms: subtopicTerms(db, sub.id) })
       return true
     }
@@ -638,6 +668,54 @@ export async function lexiconRoute({ path, req, db, user, body, send }) {
   }
 
   // Flat occurrence rows (one per term in a unit), as in the source table.
+  const colTerms =
+    /^\/api\/lexicon\/collections\/([^/]+)\/terms(?:\/([^/]+))?$/.exec(path)
+  if (colTerms) {
+    if (!staff(user)) fail(403, 'Нет доступа')
+    const collection = db
+      .prepare(
+        'SELECT id, title FROM vocab_collections WHERE id = ? AND archived = 0',
+      )
+      .get(decodeURIComponent(colTerms[1]))
+    if (!collection) fail(404, 'Коллекция не найдена')
+    const termId = colTerms[2] && decodeURIComponent(colTerms[2])
+    const touch = () =>
+      db
+        .prepare('UPDATE vocab_collections SET updated = ? WHERE id = ?')
+        .run(new Date().toISOString(), collection.id)
+    if (!termId && req.method === 'POST') {
+      const data = await body(req, 100000)
+      const added = addTerms(
+        db,
+        'lexicon_collection_terms',
+        'collectionId',
+        collection.id,
+        data.termIds,
+      )
+      if (added) touch()
+      send(200, {
+        ...collection,
+        added,
+        terms: collectionTerms(db, collection.id),
+      })
+      return true
+    }
+    if (termId && req.method === 'DELETE') {
+      const removed = db
+        .prepare(
+          'DELETE FROM lexicon_collection_terms WHERE collectionId = ? AND termId = ?',
+        )
+        .run(collection.id, termId).changes
+      if (removed) touch()
+      send(200, { ...collection, terms: collectionTerms(db, collection.id) })
+      return true
+    }
+    if (!termId && req.method === 'GET') {
+      send(200, { ...collection, terms: collectionTerms(db, collection.id) })
+      return true
+    }
+  }
+
   if (path === '/api/lexicon/entries' && req.method === 'GET') {
     const q = keyOf(params.get('q') || '')
     const limit = Math.min(Math.max(Number(params.get('limit')) || 20, 1), 200)

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Repeat } from 'lucide-react'
+import { ClipboardList, Repeat } from 'lucide-react'
 import {
   ApiError,
   api,
@@ -60,6 +60,8 @@ export default function LessonDialog({
   )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [askPlan, setAskPlan] = useState(false)
+  const [planError, setPlanError] = useState('')
   const field = (key: keyof typeof form, value: string) => {
     setConflicts([])
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -123,6 +125,32 @@ export default function LessonDialog({
     mode === 'edit' &&
     following &&
     !conflicts.some((c) => c.date === form.date && c.start === form.start)
+  // «Урок вне плана»: the plan recounts only after the answer «Да».
+  async function togglePlan() {
+    setBusy(true)
+    setPlanError('')
+    try {
+      await api(`/lessons/${lesson.id}/plan`, 'POST', {
+        offPlan: !lesson.offPlan,
+      })
+      await onChanged()
+      setAskPlan(false)
+    } catch (e) {
+      setPlanError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const plan = lesson.plan
+  const planText = !plan
+    ? ''
+    : plan.number
+      ? `урок ${plan.number} из ${plan.total}${plan.lessonTitle ? ` — ${plan.lessonTitle}` : ''}`
+      : lesson.offPlan
+        ? 'урок вне плана'
+        : lesson.status !== 'scheduled'
+          ? 'не считается: урок отменён или неявка'
+          : 'уроки плана закончились'
   const student = users.find((u) => u.id === lesson.studentId)
   const feedback = (
     <>
@@ -161,6 +189,65 @@ export default function LessonDialog({
           <Repeat size={15} aria-hidden="true" />
           {describeRule(series)}
         </p>
+      )}
+      {plan && (
+        <div className="lesson-dialog__plan">
+          <p className="secondary lesson-dialog__rule">
+            <ClipboardList size={15} aria-hidden="true" />
+            <span>
+              План «{plan.title}»: {planText}
+            </span>
+          </p>
+          {mode === 'view' && lesson.status === 'scheduled' && (
+            <label className="field__check">
+              <input
+                type="checkbox"
+                checked={lesson.offPlan}
+                disabled={busy}
+                onChange={() => {
+                  setPlanError('')
+                  setAskPlan(true)
+                }}
+              />
+              Урок вне плана
+            </label>
+          )}
+        </div>
+      )}
+      {askPlan && (
+        <Modal titleId="plan-question" onClose={() => setAskPlan(false)}>
+          <h2 id="plan-question">
+            {lesson.offPlan
+              ? 'Вернуть этот урок в план?'
+              : 'Вывести этот урок из плана?'}
+          </h2>
+          <p className="secondary">
+            Номера уроков плана пересчитаются. Уже выданные задания останутся у
+            ученика.
+          </p>
+          {planError && (
+            <p className="error" role="alert">
+              {planError}
+            </p>
+          )}
+          <div className="form-actions">
+            <button
+              className="button-primary"
+              disabled={busy}
+              onClick={() => void togglePlan()}
+            >
+              {busy ? 'Сохраняем…' : 'Да'}
+            </button>
+            <button
+              className="button-secondary"
+              autoFocus
+              disabled={busy}
+              onClick={() => setAskPlan(false)}
+            >
+              Нет
+            </button>
+          </div>
+        </Modal>
       )}
       {mode === 'view' && (
         <>

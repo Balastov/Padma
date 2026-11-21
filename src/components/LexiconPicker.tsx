@@ -71,31 +71,72 @@ export function TermChecklist({
 }
 
 type SearchPage = { total: number; items: LexiconTerm[] }
+type FilterBook = {
+  id: string
+  title: string
+  units: { id: string; number: number; theme: string }[]
+}
+type FilterTopic = { id: string; title: string }
 
-/** Dictionary search (English and Russian) with checkboxes. */
+/** Level, unit and topic filters of the dictionary search. */
+function useFilterOptions(enabled: boolean) {
+  const [books, setBooks] = useState<FilterBook[]>([])
+  const [topics, setTopics] = useState<FilterTopic[]>([])
+  useEffect(() => {
+    if (!enabled) return
+    let active = true
+    api<FilterBook[]>('/lexicon/books')
+      .then((list) => active && setBooks(list))
+      .catch(() => active && setBooks([]))
+    api<FilterTopic[]>('/lexicon/themes')
+      .then((list) => active && setTopics(list))
+      .catch(() => active && setTopics([]))
+    return () => {
+      active = false
+    }
+  }, [enabled])
+  return { books, topics }
+}
+
+/** Dictionary search (English and Russian) with checkboxes; `filters` adds
+ *  level, unit and topic like on «Все слова». */
 export function TermSearch({
   actionLabel,
   onAdd,
   addedIds = [],
+  filters = false,
 }: {
   actionLabel: string
   onAdd: (terms: LexiconTerm[]) => void | Promise<void>
   addedIds?: string[]
+  filters?: boolean
 }) {
   const [q, setQ] = useState('')
+  const [bookId, setBookId] = useState('')
+  const [unitId, setUnitId] = useState('')
+  const [topicId, setTopicId] = useState('')
   const [result, setResult] = useState<SearchPage | null>(null)
   const [checked, setChecked] = useState<string[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const { books, topics } = useFilterOptions(filters)
+  const unitBook = books.find((b) => b.id === bookId)
+  const filtered = Boolean(bookId || topicId)
+  const searching = Boolean(q.trim() || filtered)
 
   useEffect(() => {
     const query = q.trim()
-    if (!query) return
+    if (!query && !bookId && !topicId) return
     let active = true
+    const search = new URLSearchParams({
+      limit: bookId || topicId ? '100' : '30',
+      q: query,
+    })
+    if (bookId) search.set('bookId', bookId)
+    if (unitId) search.set('unitId', unitId)
+    if (topicId) search.set('topicId', topicId)
     const timer = window.setTimeout(() => {
-      api<SearchPage>(
-        `/lexicon/search?limit=30&q=${encodeURIComponent(query)}`,
-      )
+      api<SearchPage>(`/lexicon/search?${search}`)
         .then((page) => {
           if (!active) return
           setResult(page)
@@ -108,9 +149,9 @@ export function TermSearch({
       active = false
       window.clearTimeout(timer)
     }
-  }, [q])
+  }, [q, bookId, unitId, topicId])
 
-  const items = (q.trim() && result?.items) || []
+  const items = (searching && result?.items) || []
   const fresh = items.filter((t) => !addedIds.includes(t.id))
   const selected = fresh.filter((t) => checked.includes(t.id))
 
@@ -140,12 +181,58 @@ export function TermSearch({
           placeholder="Слово или перевод — на английском или русском"
         />
       </label>
+      {filters && (
+        <div className="lex-search__filters">
+          <select
+            aria-label="Уровень"
+            value={bookId}
+            onChange={(e) => {
+              setBookId(e.target.value)
+              setUnitId('')
+            }}
+          >
+            <option value="">Уровень: все</option>
+            {books.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.title}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Юнит"
+            value={unitId}
+            disabled={!unitBook}
+            title={unitBook ? undefined : 'Сначала выберите уровень'}
+            onChange={(e) => setUnitId(e.target.value)}
+          >
+            <option value="">{unitBook ? 'Юнит: все' : 'Юнит'}</option>
+            {unitBook?.units.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.number}
+                {u.theme ? ` · ${u.theme}` : ''}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Тема"
+            value={topicId}
+            onChange={(e) => setTopicId(e.target.value)}
+          >
+            <option value="">Тема</option>
+            {topics.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      {q.trim() && result && (
+      {searching && result && (
         <>
           {!items.length ? (
             <p className="caption">Ничего не найдено.</p>

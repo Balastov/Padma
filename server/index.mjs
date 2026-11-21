@@ -14,6 +14,13 @@ import {
 } from './files.mjs'
 import { initLibrary, libraryRoute, canSeeLibraryItem } from './library.mjs'
 import { initLessons, lessonsRoute } from './lessons.mjs'
+import {
+  canSeePlanFile,
+  initPlans,
+  issuePlanHomework,
+  lessonPlanInfo,
+  plansRoute,
+} from './plans.mjs'
 import { initVocab, vocabRoute } from './vocab.mjs'
 import { initLexicon, lexiconRoute } from './lexicon.mjs'
 import { initLexiconStudent, lexiconStudentRoute } from './lexiconStudent.mjs'
@@ -81,6 +88,7 @@ export function createApp({
   initLexiconStudent(db)
   initAppearance(db)
   initLibrary(db)
+  initPlans(db)
   const store = initFiles(db, filesDir)
   const vapid = loadVapidKeys(dbPath)
   const attempts = new Map()
@@ -121,6 +129,7 @@ export function createApp({
     submission: (viewer, id) =>
       canReadHomework(db, viewer, getUser, { submissionId: id }),
     library: (viewer, id) => canSeeLibraryItem(db, viewer, getUser, id),
+    plan: (viewer, id) => canSeePlanFile(db, viewer, getUser, id),
     chat: (viewer, id) => {
       const message = db
         .prepare('SELECT threadKey FROM messages WHERE id=?')
@@ -140,6 +149,21 @@ export function createApp({
   void purge()
   const purgeTimer = setInterval(purge, 36e5)
   purgeTimer.unref()
+  // Study plans give homework when a lesson ends; one run at a time.
+  let issuing = null
+  const issuePlans = (now) => {
+    issuing ??= issuePlanHomework(db, store, now).finally(() => {
+      issuing = null
+    })
+    return issuing
+  }
+  const issueQuietly = () =>
+    issuePlans().catch((error) =>
+      console.error('Не удалось выдать задания по плану', error),
+    )
+  void issueQuietly()
+  const planTimer = setInterval(issueQuietly, 6e4)
+  planTimer.unref()
   const cookie = (token) =>
     `padma_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 604800 : 0}${secure ? '; Secure' : ''}`
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
@@ -287,12 +311,36 @@ export function createApp({
       )
         return
       if (
-        await lessonsRoute({ path, req, db, user, body, send, getUser })
+        await lessonsRoute({
+          path,
+          req,
+          db,
+          user,
+          body,
+          send,
+          getUser,
+          planInfo: () => lessonPlanInfo(db),
+          onPlanChange: issueQuietly,
+        })
       )
         return
       if (await filesRoute({ path, req, res, db, user, store, send })) return
       if (
         await libraryRoute({ path, req, db, user, body, send, getUser, store })
+      )
+        return
+      if (
+        await plansRoute({
+          path,
+          req,
+          db,
+          user,
+          body,
+          send,
+          getUser,
+          store,
+          issue: issueQuietly,
+        })
       )
         return
       if (await vocabRoute({ path, req, res, db, user, body, send })) return
@@ -740,9 +788,10 @@ export function createApp({
   })
   server.on('close', () => {
     clearInterval(purgeTimer)
+    clearInterval(planTimer)
     db.close()
   })
-  return { server, db, store }
+  return { server, db, store, issuePlans }
 }
 if (
   process.argv[1] &&

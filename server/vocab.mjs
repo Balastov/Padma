@@ -904,9 +904,10 @@ export async function vocabRoute({ path, req, res, db, user, body, send }) {
         description: c.description,
         tags: parseJson(c.tags, []),
         imageStub: true,
+        // Collections are built from dictionary words (lexicon.mjs).
         wordCount: db
           .prepare(
-            `SELECT count(*) AS n FROM vocab_collection_words WHERE collectionId=?`,
+            `SELECT count(*) AS n FROM lexicon_collection_terms WHERE collectionId=?`,
           )
           .get(c.id).n,
         wordIds: db

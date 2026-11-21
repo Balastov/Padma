@@ -9,6 +9,12 @@ import SectionStub from '../../components/SectionStub'
 import '../library/Library.css'
 
 type Props = { user: User; students: User[] }
+type Category = LibraryItem['category']
+const SECTIONS: [Category | 'all', string][] = [
+  ['all', 'Все'],
+  ['', 'Материалы'],
+  ['grammar', 'Грамматика'],
+]
 
 export default function TeacherLibraryPage({ user, students }: Props) {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
@@ -17,6 +23,8 @@ export default function TeacherLibraryPage({ user, students }: Props) {
   const [files, setFiles] = useState<File[]>([])
   const [audience, setAudience] = useState<'all' | 'selected'>('all')
   const [chosen, setChosen] = useState<string[]>([])
+  const [category, setCategory] = useState<Category>('')
+  const [section, setSection] = useState<Category | 'all'>('all')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const allLabel = isManager(user)
@@ -47,6 +55,7 @@ export default function TeacherLibraryPage({ user, students }: Props) {
         fileId,
         audience,
         studentIds: chosen,
+        category,
       })
       setTitle('')
       setDescription('')
@@ -76,6 +85,9 @@ export default function TeacherLibraryPage({ user, students }: Props) {
       : (item.studentIds || [])
           .map((id) => fullName(students.find((s) => s.id === id)))
           .join(', ')
+  const shown = (items || []).filter(
+    (item) => section === 'all' || item.category === section,
+  )
   return (
     <div className="library-page">
       <header className="page-heading">
@@ -107,6 +119,28 @@ export default function TeacherLibraryPage({ user, students }: Props) {
           />
         </label>
         <FilePicker files={files} onChange={setFiles} max={1} disabled={busy} />
+        <div className="field">
+          <span>Раздел</span>
+          <div className="segmented">
+            {SECTIONS.slice(1).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={category === value}
+                className={category === value ? 'active' : ''}
+                onClick={() => setCategory(value as Category)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {category === 'grammar' && (
+            <small>
+              Грамматику можно добавлять в уроки планов обучения. Ученик
+              получит доступ к материалу вместе с заданием по плану.
+            </small>
+          )}
+        </div>
         <div className="segmented">
           {(
             [
@@ -175,9 +209,30 @@ export default function TeacherLibraryPage({ user, students }: Props) {
         />
       )}
       {!!items?.length && (
+        <div className="segmented library-sections">
+          {SECTIONS.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={section === value}
+              className={section === value ? 'active' : ''}
+              onClick={() => setSection(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {!!items?.length && !shown.length && (
+        <p className="secondary">В этом разделе материалов пока нет.</p>
+      )}
+      {!!shown.length && (
         <div className="library-list">
-          {items.map((item) => (
+          {shown.map((item) => (
             <article key={item.id} className="glass-panel library-card">
+              {item.category === 'grammar' && (
+                <span className="library-card__tag">Грамматика</span>
+              )}
               <strong>{item.title}</strong>
               {item.description && (
                 <p className="secondary">{item.description}</p>

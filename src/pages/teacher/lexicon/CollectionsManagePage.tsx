@@ -4,8 +4,10 @@ import { Plus } from 'lucide-react'
 import { api } from '../../../api'
 import type { User } from '../../../api'
 import StubMedia from '../../../components/StubMedia'
+import { wordsCount } from '../../../components/lexiconFormat'
 import AssignPanel from './AssignPanel'
-import { DictionaryChrome, type TeacherWord } from './DictionaryAllPage'
+import { DictionaryChrome } from './DictionaryAllPage'
+import TermListEditor from './TermListEditor'
 import './lexicon.css'
 
 type Collection = {
@@ -24,7 +26,6 @@ export default function CollectionsManagePage({
   students: User[]
 }) {
   const [list, setList] = useState<Collection[]>([])
-  const [words, setWords] = useState<TeacherWord[]>([])
   const [params] = useSearchParams()
   // A collection found in the dictionary search opens via ?c=<id>.
   const [selectedId, setSelectedId] = useState(params.get('c') || '')
@@ -32,21 +33,12 @@ export default function CollectionsManagePage({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
-  const [pick, setPick] = useState<string[]>([])
-  const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [c, w] = await Promise.all([
-        api<Collection[]>('/vocab/collections'),
-        api<TeacherWord[]>('/vocab'),
-      ])
+      const c = await api<Collection[]>('/vocab/collections')
       setList(c)
-      setWords(w)
-      if (!selectedId && c[0]) {
-        setSelectedId(c[0].id)
-        setPick(c[0].wordIds)
-      }
+      if (!selectedId && c[0]) setSelectedId(c[0].id)
       setError('')
     } catch (e) {
       setError((e as Error).message)
@@ -62,10 +54,6 @@ export default function CollectionsManagePage({
   const shown = needle
     ? list.filter((c) => c.title.toLocaleLowerCase('ru').includes(needle))
     : list
-
-  useEffect(() => {
-    if (current) setPick(current.wordIds)
-  }, [current?.id])
 
   async function create() {
     if (!title.trim()) return
@@ -83,27 +71,6 @@ export default function CollectionsManagePage({
     } catch (e) {
       setError((e as Error).message)
     }
-  }
-
-  async function saveWords() {
-    if (!current) return
-    setBusy(true)
-    try {
-      await api('/vocab/collections/' + current.id + '/words', 'PUT', {
-        wordIds: pick,
-      })
-      await load()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function toggle(id: string) {
-    setPick((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
   }
 
   return (
@@ -157,7 +124,7 @@ export default function CollectionsManagePage({
               <strong>{c.title}</strong>
               <p className="caption">{c.description}</p>
               <small>
-                {c.wordCount} слов ·{' '}
+                {wordsCount(c.wordCount)} ·{' '}
                 {c.updated.slice(0, 10)}
               </small>
               <div className="lexicon-card__actions">
@@ -193,26 +160,15 @@ export default function CollectionsManagePage({
                   </span>
                 ))}
               </div>
-              <button
-                type="button"
-                className="button-secondary button-small"
-                disabled={busy}
-                onClick={saveWords}
-              >
-                Сохранить слова ({pick.length})
-              </button>
-              <div className="lexicon-checks">
-                {words.map((w) => (
-                  <label key={w.id}>
-                    <input
-                      type="checkbox"
-                      checked={pick.includes(w.id)}
-                      onChange={() => toggle(w.id)}
-                    />
-                    {w.word} — {w.translation}
-                  </label>
-                ))}
-              </div>
+              <TermListEditor
+                ownerId={current.id}
+                path={`/lexicon/collections/${encodeURIComponent(current.id)}/terms`}
+                caption="Слова коллекции"
+                actionLabel="Добавить в коллекцию"
+                removeLabel="Убрать из коллекции"
+                filters
+                onChanged={() => void load()}
+              />
             </section>
             <AssignPanel
               sourceType="collection"

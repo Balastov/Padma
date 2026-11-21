@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import {
   CalendarDays,
+  ClipboardList,
   Clock3,
   Home,
   Plus,
@@ -48,6 +49,9 @@ import CollectionsManagePage from './teacher/lexicon/CollectionsManagePage'
 import WordEditPage from './teacher/lexicon/WordEditPage'
 import TrainerAssignPage from './teacher/lexicon/TrainerAssignPage'
 import StudentProgressPage from './teacher/lexicon/StudentProgressPage'
+import PlansPage from './teacher/plans/PlansPage'
+import PlanPage from './teacher/plans/PlanPage'
+import PlanLessonPage from './teacher/plans/PlanLessonPage'
 import '../styles/workspace.css'
 
 type Props = {
@@ -221,6 +225,14 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
           >
             <BookOpen size={23} />
             <span>Домашние задания</span>
+          </NavLink>
+          <NavLink
+            to="/teacher/plans"
+            aria-label="Планы обучения"
+            title="Планы обучения"
+          >
+            <ClipboardList size={23} />
+            <span>Планы</span>
           </NavLink>
           <NavLink to="/teacher/lexicon" aria-label="Лексика" title="Лексика">
             <Languages size={23} />
@@ -498,12 +510,24 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
               path="library"
               element={<TeacherLibraryPage user={user} students={students} />}
             />
+            <Route
+              path="plans"
+              element={<PlansPage user={user} users={users} />}
+            />
+            <Route
+              path="plans/:id"
+              element={<PlanPage user={user} users={users} />}
+            />
+            <Route
+              path="plans/:id/lessons/:lessonId"
+              element={<PlanLessonPage />}
+            />
             <Route path="*" element={<Navigate to="/teacher" replace />} />
           </Routes>
         )}
         {selected && (
           <LessonDialog
-            lesson={selected}
+            lesson={lessons.find((l) => l.id === selected.id) ?? selected}
             series={series.find((x) => x.id === selected.seriesId)}
             users={users}
             onClose={() => setSelected(null)}

@@ -18,6 +18,7 @@ import { sourceLabel, wordsCount } from './lexiconFormat'
 import type { LexiconSource } from './HomeworkLexicon'
 import { playWordAudio } from '../student/audio'
 import Modal from './Modal'
+import { RichText } from './RichText'
 import './Homework.css'
 
 type Submission = {
@@ -57,6 +58,13 @@ type Assignment = {
       transcription: string
     }[]
   }
+  /** Library materials (grammar) given with the task. */
+  materials?: {
+    id: string
+    title: string
+    description: string
+    file: StoredFile | null
+  }[]
 }
 /** Computed by the server; returned work is assigned again. */
 const statuses = {
@@ -431,8 +439,24 @@ function AssignmentCard({
           })}
         </p>
       )}
-      <p className="hw__text">{item.description}</p>
+      <p className="hw__text">
+        <RichText text={item.description} />
+      </p>
       <FileLinks files={item.files} />
+      {!!item.materials?.length && (
+        <div className="hw__materials">
+          <span className="hw__materials-label">Грамматика</span>
+          <ul>
+            {item.materials.map((m) => (
+              <li key={m.id}>
+                <strong>{m.title}</strong>
+                {m.description && <small>{m.description}</small>}
+                <FileLinks files={m.file ? [m.file] : []} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {!!item.lexicon?.words.length && (
         <details className="hw__lexicon">
           <summary>Лексика · {wordsCount(item.lexicon.words.length)}</summary>

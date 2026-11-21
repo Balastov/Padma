@@ -33,6 +33,18 @@ export type Lesson = {
   seq: number
   /** Title set by hand instead of the series plan. */
   customTitle: boolean
+  /** «Урок вне плана»: not counted by the student's study plan. */
+  offPlan: boolean
+  /** Place in the student's study plan (lessons from its start date). */
+  plan: LessonPlanInfo | null
+}
+export type LessonPlanInfo = {
+  planId: string
+  title: string
+  /** Number of the plan lesson; null when the lesson is not counted. */
+  number: number | null
+  lessonTitle: string
+  total: number
 }
 export const lessonStatusNames: Record<LessonStatus, string> = {
   scheduled: 'Запланирован',
@@ -85,6 +97,8 @@ export type LibraryItem = {
   description: string
   /** "all": every student of the author (whole school for an admin). */
   audience: 'all' | 'selected'
+  /** Library section: '' — materials, 'grammar' — grammar for study plans. */
+  category: '' | 'grammar'
   created: string
   file: StoredFile | null
   /** Only for those who manage the material. */

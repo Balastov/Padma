@@ -23,7 +23,15 @@ export function initLibrary(db) {
     studentId TEXT NOT NULL REFERENCES users(id),
     PRIMARY KEY (itemId, studentId)
   );`)
+  const columns = db.prepare('PRAGMA table_info(library_items)').all()
+  if (!columns.some((c) => c.name === 'category'))
+    db.exec(
+      `ALTER TABLE library_items ADD COLUMN category TEXT NOT NULL DEFAULT ''`,
+    )
 }
+
+/** Library sections: '' — materials, 'grammar' — grammar for study plans. */
+export const LIBRARY_CATEGORIES = ['', 'grammar']
 
 const studentsOf = (db, itemId) =>
   db
@@ -37,6 +45,14 @@ export function canSeeLibraryItem(db, user, getUser, itemId) {
   if (!item) return false
   if (canManage(user, item)) return true
   if (!user.roles.includes('student')) return false
+  // A material given with the student's homework (grammar of a study plan).
+  const viaHomework = db
+    .prepare(
+      `SELECT 1 FROM homework_library l JOIN homework h ON h.id = l.homeworkId
+       WHERE l.itemId = ? AND h.studentId = ? AND h.archived = 0 LIMIT 1`,
+    )
+    .get(item.id, user.id)
+  if (viaHomework) return true
   if (item.audience === 'selected')
     return studentsOf(db, item.id).includes(user.id)
   const author = getUser(item.authorId)
@@ -78,6 +94,9 @@ export async function libraryRoute({
       description = clean(data.description, 2000)
     if (!title) fail(400, 'Укажите название материала')
     if (typeof data.fileId !== 'string') fail(400, 'Прикрепите файл')
+    const category = data.category ?? ''
+    if (!LIBRARY_CATEGORIES.includes(category))
+      fail(400, 'Неизвестный раздел библиотеки')
     if (!['all', 'selected'].includes(data.audience))
       fail(400, 'Выберите, кому доступен материал')
     const studentIds =
@@ -101,11 +120,12 @@ export async function libraryRoute({
       description,
       audience: data.audience,
       created: new Date().toISOString(),
+      category,
     }
     db.exec('BEGIN IMMEDIATE')
     try {
       db.prepare(
-        'INSERT INTO library_items (id,authorId,title,description,audience,created) VALUES (?,?,?,?,?,?)',
+        'INSERT INTO library_items (id,authorId,title,description,audience,created,category) VALUES (?,?,?,?,?,?,?)',
       ).run(...Object.values(item))
       for (const id of studentIds)
         db.prepare(

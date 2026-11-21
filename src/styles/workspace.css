@@ -842,20 +842,27 @@ input[type='checkbox'] {
   }
   .sidebar nav {
     flex-direction: row;
-    gap: 4px;
+    gap: 2px;
     justify-content: space-around;
   }
+  /* Up to six items (teacher) share the phone width. */
   .sidebar nav a {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
     flex-direction: column;
     gap: 4px;
-    padding: 8px;
+    padding: 8px 0;
     min-height: 56px;
     font-size: 11px;
     border-radius: 14px;
   }
   .sidebar nav a span {
     display: block;
+    max-width: 100%;
+    font-size: 10px;
+    text-align: center;
+    hyphens: auto;
+    overflow-wrap: break-word;
   }
   .sidebar:after {
     display: none;
@@ -1020,4 +1027,12 @@ dialog.modal::backdrop {
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
+}
+.lesson-dialog__plan {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+.lesson-dialog__plan p {
+  margin: 0;
 }

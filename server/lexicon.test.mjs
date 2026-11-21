@@ -557,6 +557,55 @@ test('lexicon API: browse, search, term card, staff-only edits', async () => {
 
     const removed = await request(`${kitchen}/${ids.basket}`, 'DELETE', undefined, teacher)
     assert.deepEqual(removed.body.terms, [])
+
+    // Teacher collections are built from dictionary words.
+    const trip = await request(
+      '/vocab/collections',
+      'POST',
+      { title: 'Поездка', description: '', tags: [], wordIds: [] },
+      teacher,
+    )
+    const tripTerms = `/lexicon/collections/${trip.body.id}/terms`
+    assert.equal((await request(tripTerms, 'GET', undefined, student)).status, 403)
+    assert.equal(
+      (await request('/lexicon/collections/nope/terms', 'GET', undefined, teacher)).status,
+      404,
+    )
+    const addTrip = await request(
+      tripTerms,
+      'POST',
+      { termIds: [ids['town hall'], ids.arrive] },
+      teacher,
+    )
+    assert.equal(addTrip.body.added, 2)
+    assert.deepEqual(
+      addTrip.body.terms.map((t) => t.term),
+      ['town hall', 'arrive'],
+    )
+    assert.equal(
+      (await request(tripTerms, 'POST', { termIds: [ids.arrive] }, teacher)).body.added,
+      0,
+    )
+    assert.equal(
+      (await request(tripTerms, 'POST', { termIds: ['nope'] }, teacher)).status,
+      400,
+    )
+    const countOf = async () =>
+      (await request('/vocab/collections', 'GET', undefined, teacher)).body.find(
+        (c) => c.id === trip.body.id,
+      ).wordCount
+    assert.equal(await countOf(), 2)
+    const dropTrip = await request(
+      `${tripTerms}/${encodeURIComponent(ids['town hall'])}`,
+      'DELETE',
+      undefined,
+      teacher,
+    )
+    assert.deepEqual(
+      dropTrip.body.terms.map((t) => t.term),
+      ['arrive'],
+    )
+    assert.equal(await countOf(), 1)
   } finally {
     server.close()
     rmSync(dir, { recursive: true, force: true })

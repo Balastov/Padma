@@ -35,6 +35,9 @@ export default function LibraryPage() {
         <div className="library-list">
           {items.map((item) => (
             <article key={item.id} className="glass-panel library-card">
+              {item.category === 'grammar' && (
+                <span className="library-card__tag">Грамматика</span>
+              )}
               <strong>{item.title}</strong>
               {item.description && (
                 <p className="secondary">{item.description}</p>

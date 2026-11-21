@@ -39,7 +39,14 @@ export function initHomework(db) {
     sourceId INTEGER REFERENCES homework_lexicon_sources(id), sortOrder INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (homeworkId, termId)
   );
-  CREATE INDEX IF NOT EXISTS homework_lexicon_sources_hw ON homework_lexicon_sources(homeworkId);`)
+  CREATE INDEX IF NOT EXISTS homework_lexicon_sources_hw ON homework_lexicon_sources(homeworkId);
+  -- Library materials (grammar) given with the task; the student may open them.
+  CREATE TABLE IF NOT EXISTS homework_library (
+    homeworkId TEXT NOT NULL REFERENCES homework(id),
+    itemId TEXT NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
+    sortOrder INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (homeworkId, itemId)
+  );`)
   const columns = db.prepare('PRAGMA table_info(homework)').all()
   if (!columns.some((c) => c.name === 'archived'))
     db.exec(
@@ -85,6 +92,7 @@ export async function deleteHomework(db, store, id) {
       ...dropFileRows(db, 'submission', submissions),
     ]
     db.prepare('DELETE FROM homework_terms WHERE homeworkId=?').run(id)
+    db.prepare('DELETE FROM homework_library WHERE homeworkId=?').run(id)
     db.prepare('DELETE FROM homework_lexicon_sources WHERE homeworkId=?').run(
       id,
     )
@@ -113,7 +121,7 @@ export async function purgeDoneHomework(db, store, now = new Date()) {
 const LEXICON_KINDS = { topic: 'Тема', subtopic: 'Подтема', search: 'Поиск по словарю' }
 
 // [{ kind, id?, termIds }] -> sources with validated, de-duplicated words.
-function lexiconFromBody(db, raw) {
+export function lexiconFromBody(db, raw) {
   if (raw === undefined || raw === null) return { sources: [], duplicates: 0 }
   if (!Array.isArray(raw) || raw.length > 30)
     fail(400, 'Некорректный набор лексики')
@@ -176,6 +184,57 @@ function lexiconFromBody(db, raw) {
   }
   if (seen.size > 2000) fail(400, 'В задании не может быть больше 2000 слов')
   return { sources, duplicates }
+}
+/**
+ * Inserts a homework row with its word snapshot and library materials.
+ * Call inside the caller's transaction; files are attached by the caller.
+ */
+export function insertHomework(db, item, sources = [], libraryIds = []) {
+  db.prepare(
+    'INSERT INTO homework (id,studentId,authorId,title,description,due,created) VALUES (?,?,?,?,?,?,?)',
+  ).run(
+    item.id,
+    item.studentId,
+    item.authorId,
+    item.title,
+    item.description,
+    item.due,
+    item.created,
+  )
+  const insertSource = db.prepare(
+    `INSERT INTO homework_lexicon_sources
+     (homeworkId, kind, refId, title, parentTitle, sortOrder) VALUES (?,?,?,?,?,?)`,
+  )
+  const insertTerm = db.prepare(
+    `INSERT OR IGNORE INTO homework_terms
+     (homeworkId, termId, term, translation, transcription, sourceId, sortOrder)
+     VALUES (?,?,?,?,?,?,?)`,
+  )
+  let order = 0
+  sources.forEach((source, index) => {
+    const sourceId = insertSource.run(
+      item.id,
+      source.kind,
+      source.refId || '',
+      source.title,
+      source.parentTitle || '',
+      index,
+    ).lastInsertRowid
+    for (const w of source.words)
+      insertTerm.run(
+        item.id,
+        w.id,
+        w.term,
+        w.translation || '',
+        w.transcription || '',
+        sourceId,
+        order++,
+      )
+  })
+  const insertItem = db.prepare(
+    'INSERT OR IGNORE INTO homework_library (homeworkId, itemId, sortOrder) VALUES (?,?,?)',
+  )
+  libraryIds.forEach((itemId, index) => insertItem.run(item.id, itemId, index))
 }
 const canReadStudent = (user, student) =>
   student?.roles.includes('student') &&
@@ -266,6 +325,14 @@ export async function homeworkRoute({
     canManage: canManage(getUser(item.studentId)) && user.id !== item.studentId,
     files: listFiles(db, 'homework', item.id),
     lexicon: lexicon(item.id),
+    materials: db
+      .prepare(
+        `SELECT l.id, l.title, l.description FROM homework_library h
+         JOIN library_items l ON l.id = h.itemId
+         WHERE h.homeworkId=? ORDER BY h.sortOrder`,
+      )
+      .all(item.id)
+      .map((m) => ({ ...m, file: listFiles(db, 'library', m.id)[0] || null })),
     submissions: db
       .prepare(
         'SELECT * FROM submissions WHERE homeworkId=? ORDER BY created,rowid',
@@ -302,40 +369,8 @@ export async function homeworkRoute({
     }
     db.exec('BEGIN IMMEDIATE')
     try {
-      db.prepare(
-        'INSERT INTO homework (id,studentId,authorId,title,description,due,created) VALUES (?,?,?,?,?,?,?)',
-      ).run(...Object.values(item))
+      insertHomework(db, item, sources)
       attachFiles(db, user, data.fileIds, 'homework', item.id)
-      const insertSource = db.prepare(
-        `INSERT INTO homework_lexicon_sources
-         (homeworkId, kind, refId, title, parentTitle, sortOrder) VALUES (?,?,?,?,?,?)`,
-      )
-      const insertTerm = db.prepare(
-        `INSERT INTO homework_terms
-         (homeworkId, termId, term, translation, transcription, sourceId, sortOrder)
-         VALUES (?,?,?,?,?,?,?)`,
-      )
-      let order = 0
-      sources.forEach((source, index) => {
-        const sourceId = insertSource.run(
-          item.id,
-          source.kind,
-          source.refId,
-          source.title,
-          source.parentTitle,
-          index,
-        ).lastInsertRowid
-        for (const w of source.words)
-          insertTerm.run(
-            item.id,
-            w.id,
-            w.term,
-            w.translation,
-            w.transcription,
-            sourceId,
-            order++,
-          )
-      })
       db.exec('COMMIT')
     } catch (error) {
       db.exec('ROLLBACK')

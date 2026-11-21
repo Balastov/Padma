@@ -336,3 +336,32 @@
   height: 18px;
   padding: 0;
 }
+.hw__materials {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.hw__materials-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.hw__materials ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.hw__materials li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #ffffff8c;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.hw__materials small {
+  color: var(--text-secondary);
+}

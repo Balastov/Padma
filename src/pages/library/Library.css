@@ -54,3 +54,16 @@
   min-height: 40px;
   font-size: 14px;
 }
+.library-sections {
+  margin: 0 0 16px;
+  flex-wrap: wrap;
+}
+.library-card__tag {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #536cff17;
+  color: #265df3;
+  font-size: 12px;
+  font-weight: 600;
+}

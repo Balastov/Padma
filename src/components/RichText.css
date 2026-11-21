@@ -1,0 +1,46 @@
+.rich-input {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.rich-input__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 500;
+}
+.rich-input textarea {
+  width: 100%;
+  resize: vertical;
+}
+.rich-input__link {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #536cff0d;
+}
+.rich-input__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rich-input__preview {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px dashed #5b6eac33;
+}
+.rich-input__preview p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rich-input__preview a,
+.hw__text a,
+.hw__materials a {
+  color: #265df3;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

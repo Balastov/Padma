@@ -1,0 +1,344 @@
+.plans {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.plans .page-heading {
+  margin-bottom: 4px;
+}
+.plans h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.plans-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  color: var(--text-secondary);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.plans-back:hover {
+  color: #265df3;
+}
+.plans-create,
+.plans-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 20px;
+}
+.plans-create .field,
+.plans-add .field {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.plans-section {
+  display: grid;
+  gap: 12px;
+}
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+.plans-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  min-width: 0;
+  color: inherit;
+  overflow-wrap: anywhere;
+  transition: transform 0.15s ease;
+}
+.plans-card:hover {
+  transform: translateY(-2px);
+}
+.plans-card small {
+  color: var(--text-secondary);
+}
+.plans-card__eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #265df3;
+}
+.plans-progress {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: #5b6eac1f;
+  overflow: hidden;
+}
+.plans-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2ed3e6, #536cff);
+}
+.plans-head {
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  min-width: 0;
+}
+.plans-head .eyebrow,
+.plans-lesson .eyebrow {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.plans-head h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.plans-head > p {
+  margin: 0;
+}
+.plans-head__title {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+.plans-inline {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.plans-inline .field {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.plans-assign {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #5b6eac1f;
+}
+.plans-assign__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.plans-block {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  min-width: 0;
+}
+.plans-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.plans-block__head h2 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.plans-block__head .plans-inline {
+  flex: 1 1 320px;
+}
+.plans-block__add {
+  padding-top: 4px;
+}
+.plans-tools {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.plans-tools .icon-button:disabled {
+  opacity: 0.35;
+}
+.plans-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.plans-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #ffffff8c;
+  min-width: 0;
+}
+.plans-step__number {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #536cff17;
+  color: #265df3;
+  font-weight: 600;
+  font-size: 14px;
+}
+.plans-step.is-passed .plans-step__number {
+  background: #0f8f7a1a;
+  color: #0f8f7a;
+}
+.plans-step__body {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.plans-step__title {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.plans-step__title:hover {
+  color: #265df3;
+}
+.plans-step__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.plans-step__chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #5b6eac14;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.plans-step__chips .is-empty {
+  background: none;
+  padding-left: 0;
+}
+.plans-step__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+}
+.plans-step.is-passed .plans-step__status {
+  color: #0f8f7a;
+}
+.plans-empty {
+  margin: 0;
+}
+.plans-danger {
+  display: flex;
+  justify-content: flex-end;
+}
+.plans-lesson {
+  padding: 22px;
+  min-width: 0;
+}
+.plans-lesson__fields {
+  display: grid;
+  gap: 18px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.plans-lesson__fields > .caption {
+  margin: -8px 0 0;
+}
+.plans-lesson__part {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #5b6eac1f;
+  min-width: 0;
+}
+.plans-lesson__part > .caption {
+  margin: -6px 0 0;
+}
+.plans-lesson__files {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.plans-lesson__files > span {
+  font-weight: 500;
+}
+.plans-grammar {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.plans-grammar .lex-search__field input {
+  padding-left: 38px;
+}
+.plans-grammar__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid #5b6eac1f;
+  border-radius: 12px;
+  background: #ffffff8c;
+}
+.plans-grammar__list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.plans-grammar__list label:hover {
+  background: #536cff0d;
+}
+.plans-grammar__list input[type='checkbox'] {
+  width: auto;
+  min-height: 0;
+  margin: 3px 0 0;
+  flex: none;
+}
+.plans-grammar__list span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plans-grammar__list small {
+  color: var(--text-secondary);
+}
+.plans-grammar__list .caption {
+  padding: 8px;
+}
+@media (max-width: 720px) {
+  .plans-assign {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plans-head,
+  .plans-lesson,
+  .plans-block,
+  .plans-create,
+  .plans-add {
+    padding: 16px;
+  }
+  .plans-step {
+    flex-wrap: wrap;
+  }
+  .plans-step__body {
+    flex-basis: calc(100% - 44px);
+  }
+  .plans-step .plans-tools {
+    margin-left: 44px;
+  }
+}

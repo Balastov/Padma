@@ -53,6 +53,8 @@ export function initLessons(db) {
     ['seq', 'seq INTEGER NOT NULL DEFAULT 0'],
     ['customTitle', 'customTitle INTEGER NOT NULL DEFAULT 0'],
     ['pinned', 'pinned INTEGER NOT NULL DEFAULT 0'],
+    // «Урок вне плана»: not counted by the student's study plan (plans.mjs).
+    ['offPlan', 'offPlan INTEGER NOT NULL DEFAULT 0'],
   ])
     if (!columns.includes(name))
       db.exec(`ALTER TABLE lessons ADD COLUMN ${sql}`)
@@ -69,7 +71,7 @@ const moscowClock = new Intl.DateTimeFormat('sv-SE', {
   minute: '2-digit',
   hourCycle: 'h23',
 })
-function moscowNow() {
+export function moscowNow() {
   const value = moscowClock.format(new Date())
   return {
     day: value.slice(0, 10),
@@ -94,6 +96,7 @@ const publicLesson = (row) => ({
   ...row,
   customTitle: Boolean(row.customTitle),
   pinned: Boolean(row.pinned),
+  offPlan: Boolean(row.offPlan),
 })
 function loadSeries(db, id) {
   const row = db.prepare('SELECT * FROM lesson_series WHERE id=?').get(id)
@@ -515,6 +518,8 @@ export async function lessonsRoute({
   body,
   send,
   getUser,
+  planInfo = () => new Map(),
+  onPlanChange = async () => {},
 }) {
   const now = moscowNow()
   if (path === '/api/lessons' && req.method === 'GET') {
@@ -524,6 +529,7 @@ export async function lessonsRoute({
         'SELECT l.* FROM lessons l JOIN users u ON l.studentId=u.id WHERE u.archived=0 ORDER BY date,start',
       )
       .all()
+    const plans = planInfo()
     send(
       200,
       all
@@ -533,7 +539,7 @@ export async function lessonsRoute({
             l.teacherId === user.id ||
             l.studentId === user.id,
         )
-        .map(publicLesson),
+        .map((l) => ({ ...publicLesson(l), plan: plans.get(l.id) || null })),
     )
     return true
   }
@@ -661,8 +667,10 @@ export async function lessonsRoute({
   }
   const statusMatch = /^\/api\/lessons\/([^/]+)\/status$/.exec(path)
   const toSeriesMatch = /^\/api\/lessons\/([^/]+)\/series$/.exec(path)
+  const planMatch = /^\/api\/lessons\/([^/]+)\/plan$/.exec(path)
   const lessonMatch = /^\/api\/lessons\/([^/]+)$/.exec(path)
-  const id = statusMatch?.[1] || toSeriesMatch?.[1] || lessonMatch?.[1]
+  const id =
+    statusMatch?.[1] || toSeriesMatch?.[1] || planMatch?.[1] || lessonMatch?.[1]
   if (!id) return false
   const lesson = db.prepare('SELECT * FROM lessons WHERE id=?').get(id)
   if (!lesson) fail(404, 'Занятие не найдено')
@@ -680,6 +688,22 @@ export async function lessonsRoute({
       db.prepare('UPDATE lessons SET status=? WHERE id=?').run(data.status, id)
       if (series) materialize(db, series, series.conflictMode, now)
     })
+    await onPlanChange()
+    send(
+      200,
+      publicLesson(db.prepare('SELECT * FROM lessons WHERE id=?').get(id)),
+    )
+    return true
+  }
+  // «Урок вне плана»: the study plan recounts its lessons.
+  if (planMatch && req.method === 'POST') {
+    const data = await body(req)
+    if (typeof data.offPlan !== 'boolean') fail(400, 'Укажите действие')
+    db.prepare('UPDATE lessons SET offPlan=? WHERE id=?').run(
+      data.offPlan ? 1 : 0,
+      id,
+    )
+    await onPlanChange()
     send(
       200,
       publicLesson(db.prepare('SELECT * FROM lessons WHERE id=?').get(id)),
