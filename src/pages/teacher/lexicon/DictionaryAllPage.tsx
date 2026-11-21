@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { ChevronDown, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react'
+import { Link, NavLink } from 'react-router-dom'
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Library,
+  Search,
+  Volume2,
+} from 'lucide-react'
 import { api } from '../../../api'
 import StubMedia from '../../../components/StubMedia'
 import { playWordAudio } from '../../../student/audio'
@@ -47,10 +54,25 @@ type EntriesPage = {
   offset: number
   items: LexiconEntry[]
 }
-type LexiconBook = { id: string; title: string; level: string }
+type LexiconUnit = { id: string; number: number; theme: string }
+type LexiconBook = {
+  id: string
+  title: string
+  level: string
+  units: LexiconUnit[]
+}
+type CollectionMatch = { id: string; title: string; wordCount: number }
 type LexiconTheme = { id: string; title: string }
 
 const PAGE_SIZES = [20, 50, 100]
+
+function wordsLabel(n: number) {
+  const tail = n % 100
+  if (tail % 10 === 1 && tail !== 11) return `${n} слово`
+  if (tail % 10 >= 2 && tail % 10 <= 4 && (tail < 12 || tail > 14))
+    return `${n} слова`
+  return `${n} слов`
+}
 
 export function DictionaryChrome({
   lead,
@@ -172,6 +194,8 @@ export default function DictionaryAllPage() {
   const [query, setQuery] = useState('')
   const [hiddenBooks, setHiddenBooks] = useState<string[]>([])
   const [topicId, setTopicId] = useState('')
+  const [unitId, setUnitId] = useState('')
+  const [collections, setCollections] = useState<CollectionMatch[]>([])
   const [limit, setLimit] = useState(PAGE_SIZES[0])
   const [offset, setOffset] = useState(0)
   const [focusId, setFocusId] = useState<number | null>(null)
@@ -183,11 +207,13 @@ export default function DictionaryAllPage() {
     Promise.all([
       api<LexiconBook[]>('/lexicon/books'),
       api<LexiconTheme[]>('/lexicon/themes'),
+      api<CollectionMatch[]>('/vocab/collections'),
     ])
-      .then(([b, t]) => {
+      .then(([b, t, c]) => {
         if (!active) return
         setBooks(b)
         setThemes(t)
+        setCollections(c)
       })
       .catch((e: Error) => active && setError(e.message))
     return () => {
@@ -204,9 +230,15 @@ export default function DictionaryAllPage() {
   }, [q])
 
   const noBooks = books.length > 0 && hiddenBooks.length >= books.length
+  const shownBooks = books.filter((b) => !hiddenBooks.includes(b.id))
+  // Units are numbered inside a level, so they are offered for one level.
+  const unitBook = shownBooks.length === 1 ? shownBooks[0] : null
+  // The full dictionary is not listed: words appear for a search or a filter.
+  const filtered = Boolean(query || unitId || topicId || hiddenBooks.length)
+  const idle = !filtered || noBooks
 
   useEffect(() => {
-    if (noBooks) return
+    if (idle) return
     let active = true
     const params = new URLSearchParams({
       limit: String(limit),
@@ -217,6 +249,7 @@ export default function DictionaryAllPage() {
       for (const b of books)
         if (!hiddenBooks.includes(b.id)) params.append('bookId', b.id)
     if (topicId) params.set('topicId', topicId)
+    if (unitId) params.set('unitId', unitId)
     api<EntriesPage>(`/lexicon/entries?${params}`)
       .then((result) => {
         if (!active) return
@@ -232,10 +265,16 @@ export default function DictionaryAllPage() {
     return () => {
       active = false
     }
-  }, [query, books, hiddenBooks, noBooks, topicId, limit, offset])
+  }, [query, books, hiddenBooks, idle, topicId, unitId, limit, offset])
 
-  const items = (!noBooks && page?.items) || []
-  const total = noBooks ? 0 : page?.total || 0
+  const items = (!idle && page?.items) || []
+  const total = idle ? 0 : page?.total || 0
+  const needle = query.toLocaleLowerCase('ru')
+  const foundCollections = needle
+    ? collections.filter((c) =>
+        c.title.toLocaleLowerCase('ru').includes(needle),
+      )
+    : []
   const current = items.find((e) => e.id === focusId) || items[0]
 
   return (
@@ -252,7 +291,7 @@ export default function DictionaryAllPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Поиск слова или перевода…"
+            placeholder="Поиск слова, перевода или коллекции…"
           />
         </label>
         <BookFilter
@@ -260,9 +299,28 @@ export default function DictionaryAllPage() {
           hidden={hiddenBooks}
           onChange={(next) => {
             setHiddenBooks(next)
+            setUnitId('')
             setOffset(0)
           }}
         />
+        <select
+          aria-label="Юнит"
+          value={unitId}
+          disabled={!unitBook}
+          title={unitBook ? undefined : 'Сначала выберите один уровень'}
+          onChange={(e) => {
+            setUnitId(e.target.value)
+            setOffset(0)
+          }}
+        >
+          <option value="">{unitBook ? 'Юнит: все' : 'Юнит'}</option>
+          {unitBook?.units.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.number}
+              {u.theme ? ` · ${u.theme}` : ''}
+            </option>
+          ))}
+        </select>
         <select
           aria-label="Тема"
           value={topicId}
@@ -279,7 +337,38 @@ export default function DictionaryAllPage() {
           ))}
         </select>
       </div>
-      <div className="lexicon-grid-2 lexicon-dictionary">
+      {foundCollections.length > 0 && (
+        <section className="glass-panel lexicon-panel lexicon-found">
+          <h2>
+            <Library size={18} aria-hidden="true" /> Коллекции
+          </h2>
+          <ul>
+            {foundCollections.map((c) => (
+              <li key={c.id}>
+                <Link
+                  to={`/teacher/lexicon/dictionary/collections?c=${encodeURIComponent(c.id)}`}
+                >
+                  {c.title}
+                </Link>
+                <span className="caption">{wordsLabel(c.wordCount)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {idle && !noBooks && (
+        <section className="glass-panel lexicon-panel lexicon-start">
+          <Search size={28} aria-hidden="true" />
+          <p>
+            Найдите слово или выберите уровень, юнит или тему — слова появятся
+            здесь.
+          </p>
+        </section>
+      )}
+      <div
+        className="lexicon-grid-2 lexicon-dictionary"
+        hidden={idle && !noBooks}
+      >
         <section className="glass-panel lexicon-panel">
           <div className="lexicon-toolbar lexicon-pager">
             <span className="caption">
@@ -358,7 +447,7 @@ export default function DictionaryAllPage() {
                 ))}
               </tbody>
             </table>
-            {!loading && !items.length && (
+            {(noBooks || !loading) && !items.length && (
               <p className="empty-state">
                 {noBooks ? 'Выберите хотя бы один уровень.' : 'Ничего не найдено.'}
               </p>

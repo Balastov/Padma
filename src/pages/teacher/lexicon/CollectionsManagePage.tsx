@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { api } from '../../../api'
 import type { User } from '../../../api'
@@ -24,7 +25,10 @@ export default function CollectionsManagePage({
 }) {
   const [list, setList] = useState<Collection[]>([])
   const [words, setWords] = useState<TeacherWord[]>([])
-  const [selectedId, setSelectedId] = useState('')
+  const [params] = useSearchParams()
+  // A collection found in the dictionary search opens via ?c=<id>.
+  const [selectedId, setSelectedId] = useState(params.get('c') || '')
+  const [search, setSearch] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
@@ -54,6 +58,10 @@ export default function CollectionsManagePage({
   }, [load])
 
   const current = list.find((c) => c.id === selectedId)
+  const needle = search.trim().toLocaleLowerCase('ru')
+  const shown = needle
+    ? list.filter((c) => c.title.toLocaleLowerCase('ru').includes(needle))
+    : list
 
   useEffect(() => {
     if (current) setPick(current.wordIds)
@@ -121,9 +129,18 @@ export default function CollectionsManagePage({
           <Plus size={18} /> Создать коллекцию
         </button>
       </div>
+      <label className="field lexicon-search">
+        <span className="sr-only">Поиск коллекции</span>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Поиск коллекции по названию…"
+        />
+      </label>
       <div className="lexicon-grid-2">
         <section className="lexicon-cards">
-          {list.map((c) => (
+          {shown.map((c) => (
             <article
               key={c.id}
               className={
@@ -156,6 +173,11 @@ export default function CollectionsManagePage({
           ))}
           {!list.length && (
             <p className="empty-state glass-panel">Коллекций пока нет</p>
+          )}
+          {list.length > 0 && !shown.length && (
+            <p className="empty-state glass-panel">
+              Коллекций с таким названием нет
+            </p>
           )}
         </section>
         {current && (
