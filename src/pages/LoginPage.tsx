@@ -4,7 +4,8 @@ import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Phone } from 'lucide-react'
 import { api } from '../api'
 import type { User } from '../api'
 import Logo from '../components/Logo'
-import loginPortrait from '../assets/login-portrait-v3.png'
+import loginPortrait from '../assets/login-portrait.webp'
+import loginPortraitSmall from '../assets/login-portrait-640.webp'
 import {
   formatForeignPhoneInput,
   formatRuPhoneInput,
@@ -13,6 +14,10 @@ import {
   normalizePhone,
 } from '../phone'
 import './LoginPage.css'
+
+/** Transparent 1×1 GIF. */
+const EMPTY_IMAGE =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
 export default function LoginPage({
   onLogin,
@@ -89,10 +94,19 @@ export default function LoginPage({
     <main className="login">
       <div className="login__shell glass-panel">
         <aside className="login__visual">
-          <img
-            src={loginPortrait}
-            alt="Девушка за учебным столом с книгами и кофе"
-          />
+          {/* Hidden on phones: an empty source keeps them from downloading it. */}
+          <picture>
+            <source media="(max-width: 767px)" srcSet={EMPTY_IMAGE} />
+            <img
+              src={loginPortrait}
+              srcSet={`${loginPortraitSmall} 640w, ${loginPortrait} 1086w`}
+              sizes="(max-width: 1100px) 46vw, 490px"
+              width={1086}
+              height={1448}
+              fetchPriority="high"
+              alt="Девушка за учебным столом с книгами и кофе"
+            />
+          </picture>
         </aside>
         <section className="login__panel">
           <Logo size="lg" />

@@ -31,10 +31,12 @@ export const AppearanceContext = createContext<{
 
 export const useAppearance = () => useContext(AppearanceContext)
 
-const MAX_SIDE = 2560
+// The background is shown blurred: 1920px and well under a megabyte is plenty.
+const MAX_SIDE = 1920
+const TARGET_BYTES = 600 * 1024
 const MAX_BYTES = 5 * 1024 * 1024
 
-/** Downscales a photo to at most 2560px and re-encodes it as JPEG. */
+/** Downscales a photo to at most 1920px and re-encodes it as WebP or JPEG. */
 export async function prepareBackground(file: File): Promise<string> {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type))
     throw new Error('Выберите изображение JPG, PNG или WebP')
@@ -51,9 +53,20 @@ export async function prepareBackground(file: File): Promise<string> {
   if (!context) throw new Error('Браузер не смог обработать изображение')
   context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
   bitmap.close()
-  for (const quality of [0.86, 0.76, 0.62]) {
+  const bytes = (url: string) => url.length * 0.75
+  // Browsers without a WebP encoder return PNG: then JPEG is used.
+  for (const quality of [0.8, 0.7, 0.6]) {
+    const url = canvas.toDataURL('image/webp', quality)
+    if (!url.startsWith('data:image/webp')) break
+    if (bytes(url) < TARGET_BYTES) return url
+  }
+  for (const quality of [0.8, 0.7, 0.6, 0.5]) {
     const url = canvas.toDataURL('image/jpeg', quality)
-    if (url.length * 0.75 < MAX_BYTES) return url
+    if (
+      bytes(url) < TARGET_BYTES ||
+      (quality === 0.5 && bytes(url) < MAX_BYTES)
+    )
+      return url
   }
   throw new Error('Не удалось уменьшить изображение до 5 МБ')
 }

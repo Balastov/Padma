@@ -10,7 +10,13 @@ type LogoProps = {
 export default function Logo({ size = 'md', showTagline = true }: LogoProps) {
   return (
     <div className={`logo logo--${size}`}>
-      <img src="/brand/padma-logo-symbol.svg" alt="" aria-hidden="true" />
+      <img
+        src="/brand/padma-logo-symbol.webp"
+        width="256"
+        height="256"
+        alt=""
+        aria-hidden="true"
+      />
       <div className="logo__text">
         <strong className="logo__wordmark">Padma</strong>
         {showTagline && (

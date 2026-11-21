@@ -29,7 +29,7 @@
   overflow: hidden;
   background:
     linear-gradient(100deg, #ffffffd9 48%, #ffffff88),
-    url('../assets/santorini.jpg') right center/cover;
+    url('../assets/santorini.webp') right center/cover;
 }
 .student-next__portrait {
   width: 160px;
@@ -252,4 +252,4 @@
   }
 }
 
-.student-next.glass-panel { background: linear-gradient(100deg, #ffffffed 48%, #ffffff88), url('../assets/santorini.jpg') right center/cover; }
+.student-next.glass-panel { background: linear-gradient(100deg, #ffffffed 48%, #ffffff88), url('../assets/santorini.webp') right center/cover; }
