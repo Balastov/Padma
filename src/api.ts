@@ -13,6 +13,10 @@ export type User = {
   notificationsEnabled?: boolean
   /** IANA zone for progress days, Europe/Moscow by default. */
   timeZone?: string
+  /** Signs in through Quazar; the phone is managed there. */
+  quazarLinked?: boolean
+  /** False for accounts created through Quazar. */
+  hasPassword?: boolean
 }
 export type Teacher = Pick<User, 'id' | 'name' | 'surname' | 'photo'>
 export type LessonStatus = 'scheduled' | 'cancelled' | 'noshow'

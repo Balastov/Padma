@@ -54,6 +54,7 @@ import { loadVapidKeys, sendPushToUser } from './push.mjs'
 import { initUnread, markRead, unreadSummary } from './unread.mjs'
 import { assignStudentAvatars, photoProblem, studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
+import { initQuazar, quazarConfig, quazarRoute } from './quazar.mjs'
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
@@ -68,6 +69,7 @@ function timeZoneOf(data, current = DEFAULT_TIME_ZONE) {
 }
 const passwordValid = (value) =>
   typeof value === 'string' && value.length >= 8 && value.length <= 128
+const QUAZAR_PHONE = 'Телефон привязан к Квазару и меняется только там'
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 export function createApp({
   dbPath = process.env.PADMA_DB || '.data/padma.sqlite',
@@ -77,8 +79,10 @@ export function createApp({
   ).split(','),
   secure = process.env.NODE_ENV === 'production',
   filesDir = process.env.PADMA_FILES || join(dirname(dbPath), 'files'),
+  quazar = quazarConfig(process.env, origins),
 } = {}) {
   const db = openStore(dbPath)
+  initQuazar(db)
   initLessons(db)
   initHomework(db)
   initUnread(db)
@@ -167,6 +171,41 @@ export function createApp({
   const cookie = (token) =>
     `padma_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 604800 : 0}${secure ? '; Secure' : ''}`
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
+  // Password attempts per connection address: 20 in 15 minutes.
+  function countAttempt(key) {
+    const now = Date.now()
+    for (const [address, value] of attempts)
+      if (now - value.since > 900000) attempts.delete(address)
+    const attempt = attempts.get(key) || { count: 0, since: now }
+    if (attempt.count >= 20)
+      fail(429, 'Слишком много попыток. Повторите через 15 минут.')
+    attempt.count++
+    attempts.set(key, attempt)
+  }
+  /** New session for the user; returns its Set-Cookie value. */
+  function startSession(userId, previous = '') {
+    const now = Date.now()
+    const nextToken = randomBytes(32).toString('hex')
+    db.prepare('DELETE FROM sessions WHERE expires<?').run(now)
+    if (previous)
+      db.prepare('DELETE FROM sessions WHERE token=?').run(tokenHash(previous))
+    db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(
+      tokenHash(nextToken),
+      userId,
+      now + 604800000,
+    )
+    return cookie(nextToken)
+  }
+  // Account without a password (created through Quazar) never matches.
+  async function checkPassword(userId, password, req) {
+    countAttempt(req.socket.remoteAddress)
+    if (typeof password !== 'string' || password.length > 128) return false
+    const hash = db.prepare('SELECT password FROM users WHERE id=?').get(userId)
+      ?.password
+    const valid = await verifyPassword(password, hash || (await dummyHash))
+    if (valid && hash) attempts.delete(req.socket.remoteAddress)
+    return valid && Boolean(hash)
+  }
   async function body(req, limit = 3500000) {
     if (!req.headers['content-type']?.startsWith('application/json'))
       fail(415, 'Ожидается JSON')
@@ -256,17 +295,26 @@ export function createApp({
         .prepare('SELECT userId FROM sessions WHERE token=? AND expires>?')
         .get(tokenHash(token), Date.now())
       const user = session ? getUser(session.userId) : null
+      if (
+        await quazarRoute({
+          path,
+          req,
+          res,
+          db,
+          user,
+          body,
+          send,
+          config: quazar,
+          secure,
+          startSession,
+          checkPassword,
+        })
+      )
+        return
       if (path === '/api/login' && req.method === 'POST') {
         const data = await body(req)
         const key = req.socket.remoteAddress
-        const now = Date.now()
-        for (const [address, value] of attempts)
-          if (now - value.since > 900000) attempts.delete(address)
-        const attempt = attempts.get(key) || { count: 0, since: now }
-        if (attempt.count >= 20)
-          fail(429, 'Слишком много попыток. Повторите через 15 минут.')
-        attempt.count++
-        attempts.set(key, attempt)
+        countAttempt(key)
         if (typeof data.password !== 'string' || data.password.length > 128)
           fail(401, 'Неверный логин или пароль')
         const email = text(data.email).toLowerCase()
@@ -285,15 +333,9 @@ export function createApp({
         )
         if (!row || !valid) fail(401, 'Неверный логин или пароль')
         attempts.delete(key)
-        db.prepare('DELETE FROM sessions WHERE expires<?').run(now)
-        const nextToken = randomBytes(32).toString('hex')
-        db.prepare('DELETE FROM sessions WHERE token=?').run(tokenHash(token))
-        db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(
-          tokenHash(nextToken),
-          row.id,
-          now + 604800000,
-        )
-        return send(200, publicUser(row), { 'Set-Cookie': cookie(nextToken) })
+        return send(200, publicUser(row), {
+          'Set-Cookie': startSession(row.id, token),
+        })
       }
       if (!user) fail(401, 'Войдите в свой аккаунт')
       if (
@@ -376,6 +418,7 @@ export function createApp({
         }
         if (!email && !phone)
           fail(400, 'Укажите email или номер телефона')
+        if (user.quazarLinked && phone !== user.phone) fail(400, QUAZAR_PHONE)
         if (photoProblem(rawPhoto))
           fail(400, 'Фото: JPG, PNG или WebP до 2 МБ')
         const photo = studentPhoto(user.roles, rawPhoto)
@@ -393,6 +436,7 @@ export function createApp({
           const oldHash = db
             .prepare('SELECT password FROM users WHERE id=?')
             .get(user.id).password
+          if (!oldHash) fail(400, 'У аккаунта нет пароля: входите через Квазар')
           if (!(await verifyPassword(data.currentPassword, oldHash)))
             fail(400, 'Текущий пароль неверен')
           const nextHash = await hashPassword(data.password)
@@ -580,6 +624,7 @@ export function createApp({
         }
         if (!email && !phone)
           fail(400, 'Укажите email или номер телефона')
+        if (old?.quazarLinked && phone !== old.phone) fail(400, QUAZAR_PHONE)
         if (
           !Array.isArray(roles) ||
           !roles.length ||

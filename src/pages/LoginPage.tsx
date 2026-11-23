@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Phone } from 'lucide-react'
 import { api } from '../api'
@@ -13,6 +13,12 @@ import {
   isValidForeignPhone,
   normalizePhone,
 } from '../phone'
+import {
+  clearQuazarResult,
+  quazarMessages,
+  readQuazarResult,
+  useQuazarEnabled,
+} from '../quazar'
 import './LoginPage.css'
 
 /** Transparent 1×1 GIF. */
@@ -33,6 +39,9 @@ export default function LoginPage({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [help, setHelp] = useState('')
+  const quazar = useQuazarEnabled()
+  const [quazarResult] = useState(readQuazarResult)
+  useEffect(clearQuazarResult, [])
 
   const useEmail = loginByEmail
 
@@ -225,6 +234,22 @@ export default function LoginPage({
               <ArrowRight size={20} />
             </button>
           </form>
+          {quazarResult && (
+            <p className="error login__quazar-result" role="alert">
+              {quazarMessages[quazarResult]}
+            </p>
+          )}
+          {quazar && (
+            <div className="login__quazar">
+              <span className="login__or">или</span>
+              <a
+                className="button-secondary login__quazar-button"
+                href="/api/auth/quazar/start"
+              >
+                Войти через Квазар
+              </a>
+            </div>
+          )}
           <p className="login__foot">
             Ваши уроки, общение и маленькие шаги
             <br />к большим открытиям.

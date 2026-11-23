@@ -12,6 +12,8 @@ const config: CapacitorConfig = {
     url: 'https://www.padma.ru',
     cleartext: false,
     errorPath: 'index.html',
+    // Sign-in through Quazar stays inside the app (QUAZAR_SSO.md).
+    allowNavigation: ['quazar-msg.ru'],
   },
   ios: {
     preferredContentMode: 'mobile',

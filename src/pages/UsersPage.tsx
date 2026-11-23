@@ -13,6 +13,7 @@ import { api, fullName, isManager, roleNames } from '../api'
 import type { Role, User } from '../api'
 import Avatar from '../components/Avatar'
 import NotificationHelp from '../components/NotificationHelp'
+import QuazarLink from '../components/QuazarLink'
 import { PRESET_AVATARS, isPresetAvatar } from '../avatars'
 import {
   formatForeignPhoneInput,
@@ -477,24 +478,29 @@ function UserEditor({
               placeholder={
                 foreignPhone ? '+ и цифры' : '+7 (9XX) XXX-XX-XX'
               }
+              readOnly={initial.quazarLinked}
               onChange={(e) => onPhoneChange(e.target.value)}
             />
             <small>
-              {foreignPhone
-                ? 'Можно войти по номеру. Только цифры, можно с +.'
-                : 'Формат РФ: +7 и 10 цифр, начиная с 9. Можно войти по номеру.'}
+              {initial.quazarLinked
+                ? 'Подтверждён в Квазаре и меняется только там.'
+                : foreignPhone
+                  ? 'Можно войти по номеру. Только цифры, можно с +.'
+                  : 'Формат РФ: +7 и 10 цифр, начиная с 9. Можно войти по номеру.'}
             </small>
           </label>
-          <label className="field field--check">
-            <span className="field__check">
-              <input
-                type="checkbox"
-                checked={foreignPhone}
-                onChange={(e) => onForeignToggle(e.target.checked)}
-              />
-              У меня иностранный номер телефона
-            </span>
-          </label>
+          {!initial.quazarLinked && (
+            <label className="field field--check">
+              <span className="field__check">
+                <input
+                  type="checkbox"
+                  checked={foreignPhone}
+                  onChange={(e) => onForeignToggle(e.target.checked)}
+                />
+                У меня иностранный номер телефона
+              </span>
+            </label>
+          )}
           {form.roles.includes('student') && (
             <label className="field">
               <span>Часовой пояс</span>
@@ -549,27 +555,33 @@ function UserEditor({
           {profile && (
             <NotificationHelp open={helpOpen} onToggle={setHelpOpen} />
           )}
-          <label className="field">
-            <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
-            <input
-              type="password"
-              minLength={8}
-              maxLength={128}
-              autoComplete="new-password"
-              value={form.password}
-              onChange={(e) => field('password', e.target.value)}
-              placeholder={
-                initial.id
-                  ? 'Оставьте пустым, чтобы сохранить текущий'
-                  : 'Не менее 8 символов'
-              }
-            />
-            <small>
-              {initial.id
-                ? 'Смена пароля завершит активные сеансы пользователя.'
-                : 'Передайте пароль ученику лично.'}
-            </small>
-          </label>
+          {profile && initial.hasPassword === false ? (
+            <p className="notice">
+              Вы входите через Квазар, пароль не нужен.
+            </p>
+          ) : (
+            <label className="field">
+              <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
+              <input
+                type="password"
+                minLength={8}
+                maxLength={128}
+                autoComplete="new-password"
+                value={form.password}
+                onChange={(e) => field('password', e.target.value)}
+                placeholder={
+                  initial.id
+                    ? 'Оставьте пустым, чтобы сохранить текущий'
+                    : 'Не менее 8 символов'
+                }
+              />
+              <small>
+                {initial.id
+                  ? 'Смена пароля завершит активные сеансы пользователя.'
+                  : 'Передайте пароль ученику лично.'}
+              </small>
+            </label>
+          )}
           {profile && form.password && (
             <label className="field">
               <span>Текущий пароль *</span>
@@ -713,6 +725,7 @@ function UserEditor({
           </p>
         )}
       </form>
+      {profile && <QuazarLink user={initial} />}
       {manager &&
         initial.id &&
         initial.roles.every((r) => r === 'student' || r === 'guest') && (

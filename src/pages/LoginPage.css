@@ -114,6 +114,33 @@
   justify-content: space-between !important;
   border: 1px solid #ffffffb8 !important;
 }
+.login__quazar-result {
+  margin-top: 16px;
+}
+.login__quazar {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+.login__or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.login__or:before,
+.login__or:after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid #6575b030;
+}
+.login__quazar-button {
+  width: 100%;
+  min-height: 52px;
+  text-decoration: none;
+  font-weight: 500;
+}
 .login__foot {
   text-align: center;
   font-size: 14px;

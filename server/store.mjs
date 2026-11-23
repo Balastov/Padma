@@ -153,11 +153,18 @@ export function isValidForeignPhone(value) {
 }
 export function publicUser(row) {
   if (!row) return null
-  const { password: _password, archived: _archived, ...user } = row
+  const {
+    password,
+    archived: _archived,
+    quazarId,
+    ...user
+  } = row
   return {
     ...user,
     roles: JSON.parse(user.roles),
     notificationsEnabled: Boolean(user.notificationsEnabled),
+    quazarLinked: Boolean(quazarId),
+    hasPassword: Boolean(password),
   }
 }
 export const isManagerRoles = (roles) =>
