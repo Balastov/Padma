@@ -51,14 +51,15 @@ export default function QuazarLink({ user }: { user: User }) {
       )}
       {user.quazarLinked ? (
         <p className="quazar-link__text">
-          Аккаунт привязан: входите через Квазар. Номер телефона подтверждён там
-          и меняется только в Квазаре.
+          Аккаунт привязан: вход только через Квазар. Номер телефона подтверждён
+          там и меняется только в Квазаре.
         </p>
       ) : (
         <>
           <p className="quazar-link__text">
             Привяжите аккаунт Квазара, чтобы входить в Padma без пароля. Номер в
-            Квазаре должен совпадать с номером в Padma.
+            Квазаре должен совпадать с номером в Padma. После привязки вход по
+            паролю закроется.
           </p>
           {open ? (
             <form className="form-stack quazar-link__form" onSubmit={submit}>

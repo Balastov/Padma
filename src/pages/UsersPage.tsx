@@ -555,9 +555,12 @@ function UserEditor({
           {profile && (
             <NotificationHelp open={helpOpen} onToggle={setHelpOpen} />
           )}
-          {profile && initial.hasPassword === false ? (
+          {initial.quazarLinked ||
+          (profile && initial.hasPassword === false) ? (
             <p className="notice">
-              Вы входите через Квазар, пароль не нужен.
+              {profile
+                ? 'Вы входите через Квазар, пароль не нужен.'
+                : 'Пользователь входит через Квазар, пароль не нужен.'}
             </p>
           ) : (
             <label className="field">

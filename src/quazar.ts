@@ -3,7 +3,7 @@ import { api } from './api'
 
 /** Texts for the `?quazar=` result of signing in or linking, see QUAZAR_SSO.md. */
 export const quazarMessages: Record<string, string> = {
-  linked: 'Квазар привязан. Теперь можно входить через Квазар.',
+  linked: 'Квазар привязан. Теперь вход в Padma — только через Квазар.',
   denied: 'Вход через Квазар отменён.',
   unverified: 'Подтвердите телефон в Квазаре звонком и попробуйте снова.',
   expired: 'Попытка входа устарела. Начните заново.',

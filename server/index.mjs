@@ -70,6 +70,7 @@ function timeZoneOf(data, current = DEFAULT_TIME_ZONE) {
 const passwordValid = (value) =>
   typeof value === 'string' && value.length >= 8 && value.length <= 128
 const QUAZAR_PHONE = 'Телефон привязан к Квазару и меняется только там'
+const QUAZAR_PASSWORD = 'Аккаунт привязан к Квазару: вход только через Квазар'
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 export function createApp({
   dbPath = process.env.PADMA_DB || '.data/padma.sqlite',
@@ -333,6 +334,8 @@ export function createApp({
         )
         if (!row || !valid) fail(401, 'Неверный логин или пароль')
         attempts.delete(key)
+        // Told only after the right password: no hint which numbers are linked.
+        if (row.quazarId) fail(403, QUAZAR_PASSWORD)
         return send(200, publicUser(row), {
           'Set-Cookie': startSession(row.id, token),
         })
@@ -424,6 +427,7 @@ export function createApp({
         const photo = studentPhoto(user.roles, rawPhoto)
         const timeZone = timeZoneOf(data, user.timeZone)
         if (data.password) {
+          if (user.quazarLinked) fail(400, QUAZAR_PASSWORD)
           if (
             !passwordValid(data.password) ||
             typeof data.currentPassword !== 'string' ||
@@ -656,6 +660,7 @@ export function createApp({
         if (problem) fail(400, problem)
         const photo = studentPhoto(roles, data.photo || '')
         const timeZone = timeZoneOf(data, old?.timeZone)
+        if (old?.quazarLinked && data.password) fail(400, QUAZAR_PASSWORD)
         if ((!old || data.password) && !passwordValid(data.password))
           fail(400, 'Пароль должен содержать от 8 до 128 символов')
         const hash = data.password

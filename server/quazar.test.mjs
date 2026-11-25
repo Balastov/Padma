@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
 import { createApp } from './index.mjs'
-import { hashPassword } from './store.mjs'
+import { hashPassword, openStore } from './store.mjs'
+import { initQuazar } from './quazar.mjs'
 
 const ORIGIN = 'http://localhost:5173'
 const SECRET = 'test-secret'
@@ -371,23 +372,72 @@ test('sign-in and linking through Quazar', async () => {
       (await link(student, profile('q-new', '+79990000003'))).location,
       '/settings?quazar=linked_other',
     )
+    const elsewhere = await login('student')
     const linked = await link(
       student,
       profile('q-student', '+79990000003'),
       'https://evil.test',
     )
     assert.equal(linked.location, '/?quazar=linked')
-    assert.equal(pick(linked.cookies, 'padma_session'), '')
-    assert.equal((await me(student)).quazarLinked, true)
+    // Password sessions end; the browser that linked gets a fresh one.
+    const linkedSession = pick(linked.cookies, 'padma_session')
+    assert(linkedSession)
+    for (const old of [student, elsewhere])
+      assert.equal((await request('/me', 'GET', undefined, old)).status, 401)
+    const linkedUser = await me(linkedSession)
+    assert.equal(linkedUser.quazarLinked, true)
     assert.equal(
-      (await request('/auth/quazar/link', 'POST', { password }, student))
+      (await request('/auth/quazar/link', 'POST', { password }, linkedSession))
         .status,
       400,
     )
-    // Now Quazar signs in to the existing account; the password still works.
+    // Password sign-in is closed; only the right password learns why.
+    const byPassword = await request('/login', 'POST', {
+      email: 'student@example.test',
+      password,
+    })
+    assert.equal(byPassword.status, 403)
+    assert.match(byPassword.body.error, /Квазар/)
+    assert.equal(pick(byPassword.cookies, 'padma_session'), '')
+    assert.equal(
+      (
+        await request('/login', 'POST', {
+          email: 'student@example.test',
+          password: 'wrong-password',
+        })
+      ).status,
+      401,
+    )
+    // Nor can the password be changed, by the user or by an admin.
+    assert.equal(
+      (
+        await request(
+          '/profile',
+          'PATCH',
+          {
+            ...linkedUser,
+            password: 'new-password-1',
+            currentPassword: password,
+          },
+          linkedSession,
+        )
+      ).status,
+      400,
+    )
+    assert.equal(
+      (
+        await request(
+          '/users/student',
+          'PATCH',
+          { ...linkedUser, password: 'new-password-1' },
+          owner,
+        )
+      ).status,
+      400,
+    )
+    // Quazar signs in to the existing account.
     const back = await signIn(profile('q-student', '+79990000003'))
     assert.equal((await me(pick(back.cookies, 'padma_session'))).id, 'student')
-    assert(await login('student'))
     // Staff can link their account too.
     const teacher = await login('teacher')
     assert.equal(
@@ -410,6 +460,48 @@ test('sign-in and linking through Quazar', async () => {
     server.close()
     off.server.close()
     quazar.server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('linked accounts sign in again once password sign-in closes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'padma-quazar-'))
+  const dbPath = join(dir, 'test.sqlite')
+  // A database from before: linked and unlinked users with open sessions.
+  const before = openStore(dbPath)
+  initQuazar(before)
+  for (const [id, quazarId] of [
+    ['linked', 'q-1'],
+    ['plain', null],
+  ]) {
+    before
+      .prepare(
+        'INSERT INTO users (id,name,email,password,roles,quazarId) VALUES (?,?,?,?,?,?)',
+      )
+      .run(id, id, `${id}@example.test`, 'x', '["student"]', quazarId)
+    before
+      .prepare('INSERT INTO sessions VALUES (?,?,?)')
+      .run('token-' + id, id, Date.now() + 1e6)
+  }
+  before.exec(`DELETE FROM app_meta WHERE key='quazarPasswordClosed'`)
+  before.close()
+  const sessions = (db) =>
+    db
+      .prepare('SELECT userId FROM sessions ORDER BY userId')
+      .all()
+      .map((row) => row.userId)
+  const app = createApp({ dbPath, quazar: null })
+  await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve))
+  try {
+    assert.deepEqual(sessions(app.db), ['plain'])
+    // Only once: later sessions of linked accounts stay.
+    app.db
+      .prepare('INSERT INTO sessions VALUES (?,?,?)')
+      .run('token-new', 'linked', Date.now() + 1e6)
+    initQuazar(app.db)
+    assert.deepEqual(sessions(app.db), ['linked', 'plain'])
+  } finally {
+    app.server.close()
     rmSync(dir, { recursive: true, force: true })
   }
 })

@@ -35,6 +35,21 @@ export function initQuazar(db) {
     db.exec('ALTER TABLE users ADD COLUMN quazarId TEXT')
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_quazar_unique
     ON users(quazarId) WHERE quazarId IS NOT NULL`)
+  // Once, when password sign-in closed for linked accounts: their open
+  // sessions may come from a password, so they sign in again through Quazar.
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  )
+  if (
+    !db.prepare(`SELECT 1 FROM app_meta WHERE key='quazarPasswordClosed'`).get()
+  ) {
+    db.exec(
+      'DELETE FROM sessions WHERE userId IN (SELECT id FROM users WHERE quazarId IS NOT NULL)',
+    )
+    db.prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('quazarPasswordClosed', ?)`,
+    ).run(new Date().toISOString())
+  }
   // Flows live ten minutes: an older layout is simply dropped.
   const flowColumns = db.prepare('PRAGMA table_info(quazar_flows)').all()
   if (
@@ -240,7 +255,9 @@ export async function quazarRoute({
       db.prepare(
         'UPDATE users SET quazarId=? WHERE id=? AND quazarId IS NULL',
       ).run(info.sub, target.id)
-      return back('linked')
+      // Password sessions end: from now on the account signs in through Quazar.
+      db.prepare('DELETE FROM sessions WHERE userId=?').run(target.id)
+      return back('linked', [cleared, startSession(target.id)])
     }
 
     let userId = linked?.id
