@@ -64,6 +64,20 @@ export function initQuazar(db) {
   )`)
 }
 
+/**
+ * Back to password sign-in (admin action or server rescue): the link goes,
+ * the new password is set and all sessions of the user end.
+ */
+export function unlinkQuazar(db, userId, passwordHash) {
+  const { changes } = db
+    .prepare(
+      'UPDATE users SET quazarId=NULL, password=? WHERE id=? AND quazarId IS NOT NULL',
+    )
+    .run(passwordHash, userId)
+  if (changes) db.prepare('DELETE FROM sessions WHERE userId=?').run(userId)
+  return changes > 0
+}
+
 /** Only an in-app path: never another site. */
 const safePath = (value) =>
   typeof value === 'string' && /^\/(?!\/)[\w/-]{0,200}$/.test(value)

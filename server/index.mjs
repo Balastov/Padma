@@ -54,7 +54,12 @@ import { loadVapidKeys, sendPushToUser } from './push.mjs'
 import { initUnread, markRead, unreadSummary } from './unread.mjs'
 import { assignStudentAvatars, photoProblem, studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
-import { initQuazar, quazarConfig, quazarRoute } from './quazar.mjs'
+import {
+  initQuazar,
+  quazarConfig,
+  quazarRoute,
+  unlinkQuazar,
+} from './quazar.mjs'
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status })
@@ -578,6 +583,19 @@ export function createApp({
               photo,
             })),
         )
+      }
+      const unlinkPath = /^\/api\/users\/([^/]+)\/quazar$/.exec(path)
+      if (unlinkPath && req.method === 'DELETE') {
+        if (!privileged(user))
+          fail(403, 'Отвязать Квазар может владелец или администратор')
+        const target = getUser(unlinkPath[1])
+        if (!target) fail(404, 'Пользователь не найден')
+        const data = await body(req)
+        if (!passwordValid(data.password))
+          fail(400, 'Задайте пароль от 8 до 128 символов')
+        if (!unlinkQuazar(db, target.id, await hashPassword(data.password)))
+          fail(400, 'Квазар не привязан')
+        return send(200, getUser(target.id))
       }
       if (
         (path === '/api/users' && req.method === 'POST') ||

@@ -5,8 +5,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { createApp } from './index.mjs'
-import { hashPassword, openStore } from './store.mjs'
+import { hashPassword, openStore, verifyPassword } from './store.mjs'
 import { initQuazar } from './quazar.mjs'
 
 const ORIGIN = 'http://localhost:5173'
@@ -440,15 +442,47 @@ test('sign-in and linking through Quazar', async () => {
     assert.equal((await me(pick(back.cookies, 'padma_session'))).id, 'student')
     // Staff can link their account too.
     const teacher = await login('teacher')
+    const teacherLinked = await link(
+      teacher,
+      profile('q-teacher', '+79990000002'),
+      '/teacher/settings',
+    )
+    assert.equal(teacherLinked.location, '/teacher/settings?quazar=linked')
+    const teacherSession = pick(teacherLinked.cookies, 'padma_session')
+
+    // Owner or admin unlinks with a new password; a teacher cannot.
+    const unlink = (password, cookie) =>
+      request('/users/student/quazar', 'DELETE', { password }, cookie)
+    assert.equal((await unlink('new-password-1', teacherSession)).status, 403)
+    assert.equal((await unlink('short', owner)).status, 400)
+    const unlinked = await unlink('new-password-1', owner)
+    assert.equal(unlinked.status, 200)
+    assert.equal(unlinked.body.quazarLinked, false)
     assert.equal(
       (
-        await link(
-          teacher,
-          profile('q-teacher', '+79990000002'),
-          '/teacher/settings',
+        await request(
+          '/me',
+          'GET',
+          undefined,
+          pick(back.cookies, 'padma_session'),
         )
-      ).location,
-      '/teacher/settings?quazar=linked',
+      ).status,
+      401,
+    )
+    assert.equal(
+      (
+        await request('/login', 'POST', {
+          email: 'student@example.test',
+          password: 'new-password-1',
+        })
+      ).status,
+      200,
+    )
+    assert.equal((await unlink('new-password-1', owner)).status, 400)
+    // Without the link Quazar does not take the number over.
+    assert.equal(
+      (await signIn(profile('q-student', '+79990000003'))).location,
+      '/?quazar=phone_taken',
     )
     // An archived account is not reachable through Quazar either.
     db.prepare("UPDATE users SET archived=1 WHERE id='student'").run()
@@ -502,6 +536,62 @@ test('linked accounts sign in again once password sign-in closes', async () => {
     assert.deepEqual(sessions(app.db), ['linked', 'plain'])
   } finally {
     app.server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('server rescue unlinks Quazar and sets a password', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'padma-quazar-'))
+  const dbPath = join(dir, 'test.sqlite')
+  const setup = openStore(dbPath)
+  initQuazar(setup)
+  setup
+    .prepare(
+      'INSERT INTO users (id,name,email,phone,password,roles,quazarId) VALUES (?,?,?,?,?,?,?)',
+    )
+    .run(
+      'admin',
+      'Админ',
+      'a@example.test',
+      '+79990000001',
+      '',
+      '["owner"]',
+      'q-a',
+    )
+  setup
+    .prepare('INSERT INTO sessions VALUES (?,?,?)')
+    .run('t', 'admin', Date.now() + 1e6)
+  setup.close()
+  const script = fileURLToPath(new URL('./quazarUnlink.mjs', import.meta.url))
+  const run = (login, input = '') =>
+    spawnSync(process.execPath, [script, login], {
+      input,
+      encoding: 'utf8',
+      env: { ...process.env, PADMA_DB: dbPath },
+    })
+  const row = () => {
+    const db = openStore(dbPath)
+    const user = db.prepare("SELECT * FROM users WHERE id='admin'").get()
+    const sessions = db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n
+    db.close()
+    return { ...user, sessions }
+  }
+  try {
+    assert.match(run('+79990000099').stderr, /не найден/)
+    const mismatch = run('+79990000001', 'password-12\nother-pass1\n')
+    assert.equal(mismatch.status, 1)
+    assert.match(mismatch.stderr, /не совпадают/)
+    assert.equal(run('+79990000001', 'short\nshort\n').status, 1)
+    assert.equal(row().quazarId, 'q-a')
+    const done = run('8 999 000-00-01', 'password-12\npassword-12\n')
+    assert.equal(done.status, 0, done.stderr)
+    assert(!done.stdout.includes('password-12'))
+    const after = row()
+    assert.equal(after.quazarId, null)
+    assert.equal(after.sessions, 0)
+    assert(await verifyPassword('password-12', after.password))
+    assert.match(run('a@example.test').stderr, /не привязан/)
+  } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
