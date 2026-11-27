@@ -26,13 +26,12 @@ export function quazarConfig(env, origins) {
 }
 
 export function initQuazar(db) {
-  if (
-    !db
-      .prepare('PRAGMA table_info(users)')
-      .all()
-      .some((column) => column.name === 'quazarId')
-  )
+  const columns = db.prepare('PRAGMA table_info(users)').all()
+  if (!columns.some((column) => column.name === 'quazarId'))
     db.exec('ALTER TABLE users ADD COLUMN quazarId TEXT')
+  // When the account was linked by its number at sign-in (stage 3.3).
+  if (!columns.some((column) => column.name === 'quazarClaimedAt'))
+    db.exec('ALTER TABLE users ADD COLUMN quazarClaimedAt INTEGER')
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_quazar_unique
     ON users(quazarId) WHERE quazarId IS NOT NULL`)
   // Once, when password sign-in closed for linked accounts: their open
@@ -65,15 +64,16 @@ export function initQuazar(db) {
 }
 
 /**
- * Back to password sign-in (admin action or server rescue): the link goes,
- * the new password is set and all sessions of the user end.
+ * Unlink by an administrator: the link and the password go, all sessions of
+ * the user end. The next sign-in through Quazar with the same number links
+ * the account again.
  */
-export function unlinkQuazar(db, userId, passwordHash) {
+export function unlinkQuazar(db, userId) {
   const { changes } = db
     .prepare(
-      'UPDATE users SET quazarId=NULL, password=? WHERE id=? AND quazarId IS NOT NULL',
+      "UPDATE users SET quazarId=NULL, quazarClaimedAt=NULL, password='' WHERE id=? AND quazarId IS NOT NULL",
     )
-    .run(passwordHash, userId)
+    .run(userId)
   if (changes) db.prepare('DELETE FROM sessions WHERE userId=?').run(userId)
   return changes > 0
 }
@@ -140,9 +140,10 @@ export async function quazarRoute({
   secure,
   startSession,
   checkPassword,
+  deadline = null,
 }) {
   if (path === '/api/auth/providers' && req.method === 'GET') {
-    send(200, { quazar: Boolean(config) })
+    send(200, { quazar: Boolean(config), passwordDeadline: deadline })
     return true
   }
   if (!path.startsWith('/api/auth/quazar/')) return false
@@ -255,7 +256,9 @@ export async function quazarRoute({
       return back('unverified')
     const byPhone = (id) =>
       db
-        .prepare('SELECT id, archived FROM users WHERE phone=? AND id!=?')
+        .prepare(
+          'SELECT id, archived, password, quazarId FROM users WHERE phone=? AND id!=?',
+        )
         .get(phone, id)
     const linked = db
       .prepare('SELECT * FROM users WHERE quazarId=?')
@@ -288,7 +291,22 @@ export async function quazarRoute({
       }
     } else {
       const holder = byPhone('')
-      if (holder) return back(holder.archived ? 'archived' : 'phone_taken')
+      if (holder?.archived) return back('archived')
+      if (holder) {
+        // Without a password and without a link (after a reset or an unlink)
+        // nobody uses the account: the confirmed number takes it. An account
+        // with a password is never joined by the number alone.
+        const claimed =
+          !holder.password &&
+          !holder.quazarId &&
+          db
+            .prepare(
+              "UPDATE users SET quazarId=?, quazarClaimedAt=? WHERE id=? AND quazarId IS NULL AND password=''",
+            )
+            .run(info.sub, Date.now(), holder.id).changes === 1
+        if (!claimed) return back('phone_taken')
+        return redirect('/', [cleared, startSession(holder.id)])
+      }
       userId = randomUUID()
       try {
         db.prepare(

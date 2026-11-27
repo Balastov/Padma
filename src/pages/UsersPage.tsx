@@ -13,7 +13,7 @@ import type { Role, User } from '../api'
 import Avatar from '../components/Avatar'
 import NotificationHelp from '../components/NotificationHelp'
 import QuazarLink from '../components/QuazarLink'
-import QuazarUnlink from '../components/QuazarUnlink'
+import AccountAccess from '../components/AccountAccess'
 import { PRESET_AVATARS, isPresetAvatar } from '../avatars'
 import {
   formatPhoneInput,
@@ -618,8 +618,8 @@ function UserEditor({
         )}
       </form>
       {profile && <QuazarLink user={initial} />}
-      {!profile && manager && initial.quazarLinked && (
-        <QuazarUnlink key={initial.id} user={initial} onDone={onSaved} />
+      {!profile && manager && initial.id !== actor.id && (
+        <AccountAccess key={initial.id} user={initial} onDone={onSaved} />
       )}
       {manager &&
         initial.roles.every((r) => r === 'student' || r === 'guest') && (

@@ -54,6 +54,11 @@ export default function QuazarLink({ user }: { user: User }) {
           Аккаунт привязан: вход только через Квазар. Номер телефона подтверждён
           там и меняется только в Квазаре.
         </p>
+      ) : !user.hasPassword ? (
+        <p className="quazar-link__text">
+          Пароля у аккаунта нет. Выйдите и войдите через Квазар с номером из
+          профиля — аккаунт привяжется сам.
+        </p>
       ) : (
         <>
           <p className="quazar-link__text">

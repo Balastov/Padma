@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Phone } from 'lucide-react'
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  LockKeyhole,
+  Mail,
+  Phone,
+} from 'lucide-react'
+import { startAuthentication } from '@simplewebauthn/browser'
+import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser'
 import { api } from '../api'
 import type { User } from '../api'
 import Logo from '../components/Logo'
@@ -13,9 +23,19 @@ import {
   readQuazarResult,
   useQuazarEnabled,
 } from '../quazar'
+import { passkeyError, passkeysSupported } from '../passkeys'
 import './LoginPage.css'
 
 /** Transparent 1×1 GIF. */
+/** `?login=expired` after an old or used login link; removed from the address. */
+function readLinkResult() {
+  const url = new URL(window.location.href)
+  if (url.searchParams.get('login') !== 'expired') return ''
+  url.searchParams.delete('login')
+  window.history.replaceState(window.history.state, '', url)
+  return 'Ссылка для входа устарела или уже использована. Попросите новую.'
+}
+
 const EMPTY_IMAGE =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
@@ -34,7 +54,27 @@ export default function LoginPage({
   const [help, setHelp] = useState('')
   const quazar = useQuazarEnabled()
   const [quazarResult] = useState(readQuazarResult)
+  const [linkResult] = useState(readLinkResult)
+  const [passkeys] = useState(passkeysSupported)
   useEffect(clearQuazarResult, [])
+
+  async function passkeyLogin() {
+    setBusy(true)
+    setError('')
+    try {
+      const optionsJSON = await api<PublicKeyCredentialRequestOptionsJSON>(
+        '/auth/passkey/options',
+        'POST',
+        {},
+      )
+      const response = await startAuthentication({ optionsJSON })
+      onLogin(await api<User>('/auth/passkey', 'POST', { response }))
+    } catch (e) {
+      setError(passkeyError(e, 'Не удалось войти по ключу доступа'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const useEmail = loginByEmail
 
@@ -190,6 +230,11 @@ export default function LoginPage({
               <ArrowRight size={20} />
             </button>
           </form>
+          {linkResult && (
+            <p className="error login__quazar-result" role="alert">
+              {linkResult}
+            </p>
+          )}
           {quazarResult && (
             <p className="error login__quazar-result" role="alert">
               {quazarMessages[quazarResult]}
@@ -211,6 +256,18 @@ export default function LoginPage({
                 </a>
               </p>
             </div>
+          )}
+          {passkeys && (
+            <button
+              type="button"
+              className="login__passkey"
+              disabled={busy}
+              onClick={passkeyLogin}
+            >
+              <KeyRound size={16} />
+              Войти по ключу доступа
+              <small>для владельца и администраторов</small>
+            </button>
           )}
           <p className="login__foot">
             Ваши уроки, общение и маленькие шаги

@@ -48,6 +48,7 @@ Dev-сервер обычно работает на порту 5173; точны�
 - `OPENAI_API_KEY`: необязательный ключ для синтеза озвучки слов словаря (`POST /api/vocab` с `tts: true`). Без ключа аудио можно только загрузить вручную.
 - `PADMA_TTS_VOICE`: голос OpenAI TTS (по умолчанию `alloy`).
 - `QUAZAR_CLIENT_ID`, `QUAZAR_CLIENT_SECRET`: вход и привязка через Квазар; без них кнопки не показываются. `QUAZAR_WEB_URL` / `QUAZAR_API_URL` (по умолчанию `https://quazar-msg.ru` и `…/api`), `PADMA_URL` — запасной адрес для `redirect_uri` (по умолчанию первый `APP_ORIGIN`; обычно берётся адрес из `APP_ORIGIN`, на котором начат вход). Протокол, правила и коды ошибок — в [QUAZAR_SSO.md](QUAZAR_SSO.md); `server/quazar.test.mjs` проверяет их с поддельным Квазаром.
+- `PADMA_RP_ID` — домен ключей доступа (WebAuthn), по умолчанию первый `APP_ORIGIN` без `www.` (`padma.ru`: один ключ для обоих адресов; локально `localhost`). Ключи, ссылки для входа и «Сбросить пароль» — `server/access.mjs`, проверки — `server/access.test.mjs` (программный ключ P-256).
 
 `.env` автоматически не читается: передайте окружение процессу или используйте `node --env-file=.env.local server/index.mjs`. `VITE_*` не нужен, секретов в клиенте нет.
 

@@ -53,6 +53,7 @@ import { initUnread, markRead, unreadSummary } from './unread.mjs'
 import { assignStudentAvatars, photoProblem, studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
 import { PHONE_INVALID } from './phone.mjs'
+import { accessRoute, initAccess, passwordDeadline, rpIdOf } from './access.mjs'
 import {
   initQuazar,
   quazarConfig,
@@ -87,9 +88,11 @@ export function createApp({
   secure = process.env.NODE_ENV === 'production',
   filesDir = process.env.PADMA_FILES || join(dirname(dbPath), 'files'),
   quazar = quazarConfig(process.env, origins),
+  rpID = rpIdOf(origins),
 } = {}) {
   const db = openStore(dbPath)
   initQuazar(db)
+  initAccess(db)
   initLessons(db)
   initHomework(db)
   initUnread(db)
@@ -315,6 +318,23 @@ export function createApp({
           secure,
           startSession,
           checkPassword,
+          deadline: passwordDeadline(db),
+        })
+      )
+        return
+      if (
+        await accessRoute({
+          path,
+          req,
+          res,
+          db,
+          user,
+          body,
+          send,
+          origins,
+          rpID,
+          startSession,
+          countAttempt,
         })
       )
         return
@@ -577,17 +597,43 @@ export function createApp({
             })),
         )
       }
-      const unlinkPath = /^\/api\/users\/([^/]+)\/quazar$/.exec(path)
-      if (unlinkPath && req.method === 'DELETE') {
+      // Unlinking and resetting leave an account without a password and
+      // without a link: the next sign-in through Quazar with its number links it.
+      const accessPath = /^\/api\/users\/([^/]+)\/(quazar|password)$/.exec(path)
+      if (accessPath && req.method === 'DELETE') {
+        const [, targetId, kind] = accessPath
         if (!privileged(user))
-          fail(403, 'Отвязать Квазар может владелец или администратор')
-        const target = getUser(unlinkPath[1])
+          fail(
+            403,
+            kind === 'quazar'
+              ? 'Отвязать Квазар может владелец или администратор'
+              : 'Сбросить пароль может владелец или администратор',
+          )
+        const target = getUser(targetId)
         if (!target) fail(404, 'Пользователь не найден')
-        const data = await body(req)
-        if (!passwordValid(data.password))
-          fail(400, 'Задайте пароль от 8 до 128 символов')
-        if (!unlinkQuazar(db, target.id, await hashPassword(data.password)))
-          fail(400, 'Квазар не привязан')
+        if (target.id === user.id)
+          fail(
+            400,
+            kind === 'quazar'
+              ? 'Свой Квазар отвязать нельзя'
+              : 'Свой пароль сбросить нельзя: привяжите Квазар в профиле',
+          )
+        if (kind === 'quazar') {
+          if (!unlinkQuazar(db, target.id)) fail(400, 'Квазар не привязан')
+        } else {
+          if (target.quazarLinked)
+            fail(400, 'Аккаунт привязан к Квазару: пароля у него нет')
+          // The number is the only way back in: through Quazar.
+          if (!target.phone || target.phoneNeedsFix)
+            fail(400, 'Сначала укажите телефон: по нему пользователь войдёт через Квазар')
+          const { changes } = db
+            .prepare(
+              "UPDATE users SET password='' WHERE id=? AND password!='' AND quazarId IS NULL",
+            )
+            .run(target.id)
+          if (!changes) fail(400, 'Пароля у пользователя уже нет')
+          db.prepare('DELETE FROM sessions WHERE userId=?').run(target.id)
+        }
         return send(200, getUser(target.id))
       }
       if (path === '/api/users' && req.method === 'POST')

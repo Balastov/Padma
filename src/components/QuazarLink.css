@@ -17,3 +17,36 @@
   width: 100%;
   max-width: 420px;
 }
+.password-deadline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.password-deadline a {
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.quazar-link__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.quazar-link__login-link {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.quazar-link__login-link input {
+  min-width: 0;
+  font-size: 14px;
+}
+.quazar-link__login-link small {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--text-secondary);
+}

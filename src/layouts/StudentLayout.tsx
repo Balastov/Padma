@@ -13,6 +13,7 @@ import ProfileMenu from '../components/ProfileMenu'
 import ChatDrawer from '../components/ChatDrawer'
 import { badgeText, useChatUnread } from '../chatUnread'
 import JoinLessonButton from '../components/JoinLessonButton'
+import PasswordDeadline from '../components/PasswordDeadline'
 import './StudentLayout.css'
 import '../styles/workspace.css'
 
@@ -77,6 +78,7 @@ export default function StudentLayout({
           <ProfileMenu user={user} onLogout={onLogout} full />
         </header>
         <div className="student-shell__content">
+          <PasswordDeadline user={user} settingsPath="/settings" />
           <Outlet />
         </div>
       </div>

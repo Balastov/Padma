@@ -32,25 +32,38 @@ export function clearQuazarResult() {
   window.history.replaceState(window.history.state, '', url)
 }
 
-let providers: Promise<boolean> | null = null
-/** Whether the server has sign-in through Quazar configured. */
-export function useQuazarEnabled() {
-  const [enabled, setEnabled] = useState(false)
+export type Providers = {
+  quazar: boolean
+  /** After this moment password sign-in ends (QUAZAR_SSO.md, 3.3). */
+  passwordDeadline: string | null
+}
+const NONE: Providers = { quazar: false, passwordDeadline: null }
+let providers: Promise<Providers> | null = null
+/** Sign-in settings of the server, loaded once per page. */
+export function useProviders() {
+  const [value, setValue] = useState(NONE)
   useEffect(() => {
     let alive = true
-    providers ??= api<{ quazar: boolean }>('/auth/providers').then(
-      (result) => result.quazar,
-      () => {
-        providers = null
-        return false
-      },
-    )
-    void providers.then((value) => {
-      if (alive) setEnabled(value)
+    providers ??= api<Providers>('/auth/providers').catch(() => {
+      providers = null
+      return NONE
+    })
+    void providers.then((result) => {
+      if (alive) setValue(result)
     })
     return () => {
       alive = false
     }
   }, [])
-  return enabled
+  return value
 }
+/** Whether the server has sign-in through Quazar configured. */
+export const useQuazarEnabled = () => useProviders().quazar
+
+export const formatDeadline = (iso: string) =>
+  new Date(iso).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Moscow',
+  })

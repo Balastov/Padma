@@ -35,7 +35,9 @@ import ConflictNotice from '../components/ConflictNotice'
 import Messages from '../components/Messages'
 import { badgeText, useChatUnread } from '../chatUnread'
 import UsersPage from './UsersPage'
+import PasswordDeadline from '../components/PasswordDeadline'
 import AppearanceSettings from '../components/AppearanceSettings'
+import BackupSignIn from '../components/BackupSignIn'
 import EventPage from './EventPage'
 import TeacherLibraryPage from './teacher/TeacherLibraryPage'
 import SeriesEditPage from './SeriesEditPage'
@@ -264,6 +266,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
             <ProfileMenu user={user} onLogout={onLogout} />
           </div>
         </div>
+        <PasswordDeadline user={user} settingsPath="/teacher/settings" />
         {error && (
           <div className="error" role="alert">
             {error}{' '}
@@ -438,6 +441,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                     onUserChange={onUserChange}
                   />
                   <AppearanceSettings />
+                  {isManager(user) && <BackupSignIn />}
                 </>
               }
             />
