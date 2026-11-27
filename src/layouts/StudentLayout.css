@@ -48,6 +48,12 @@
   line-height: 1.4;
   color: var(--text-muted);
 }
+.student-shell__version {
+  margin-top: -12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
 .student-shell__main {
   min-width: 0;
   display: flex;
@@ -114,7 +120,8 @@
     display: none;
   }
   .student-shell__sidebar .logo,
-  .student-shell__quote {
+  .student-shell__quote,
+  .student-shell__version {
     display: none;
   }
   .student-shell__sidebar nav {

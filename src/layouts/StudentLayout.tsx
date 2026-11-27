@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import type { User } from '../api'
 import Logo from '../components/Logo'
+import { APP_VERSION } from '../version'
 import ProfileMenu from '../components/ProfileMenu'
 import ChatDrawer from '../components/ChatDrawer'
 import { badgeText, useChatUnread } from '../chatUnread'
@@ -28,7 +29,7 @@ export default function StudentLayout({
   return (
     <div className="student-shell">
       <aside className="student-shell__sidebar glass-panel">
-        <Logo />
+        <Logo showVersion={false} />
         <nav aria-label="Меню ученика">
           <NavLink to="/today" end>
             <Home size={22} />
@@ -54,6 +55,7 @@ export default function StudentLayout({
         <p className="student-shell__quote">
           Маленькие слова открывают большие миры
         </p>
+        <small className="student-shell__version">v{APP_VERSION}</small>
       </aside>
       <div className="student-shell__main">
         <header className="student-shell__top">

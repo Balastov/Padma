@@ -4,10 +4,16 @@ import './Logo.css'
 type LogoProps = {
   size?: 'md' | 'lg'
   showTagline?: boolean
+  /** Off where the version is shown elsewhere (the menu shows it at the bottom). */
+  showVersion?: boolean
 }
 
 /** Brand block as in the brand image: symbol above the wordmark and slogan. */
-export default function Logo({ size = 'md', showTagline = true }: LogoProps) {
+export default function Logo({
+  size = 'md',
+  showTagline = true,
+  showVersion = true,
+}: LogoProps) {
   return (
     <div className={`logo logo--${size}`}>
       <img
@@ -24,7 +30,9 @@ export default function Logo({ size = 'md', showTagline = true }: LogoProps) {
             <span className="logo__tagline">
               Учиться вместе. Видеть больше.
             </span>
-            <span className="logo__version">v{APP_VERSION}</span>
+            {showVersion && (
+              <span className="logo__version">v{APP_VERSION}</span>
+            )}
           </>
         )}
       </div>

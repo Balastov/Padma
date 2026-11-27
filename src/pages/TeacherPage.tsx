@@ -23,6 +23,7 @@ import {
 } from '../api'
 import type { Lesson, LessonConflict, LessonSeries, User } from '../api'
 import Logo from '../components/Logo'
+import { APP_VERSION } from '../version'
 import Homework from '../components/Homework'
 import LessonDialog from '../components/LessonDialog'
 import ProfileMenu from '../components/ProfileMenu'
@@ -194,7 +195,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
   return (
     <div className="workspace">
       <aside className="sidebar glass-panel">
-        <Logo />
+        <Logo showVersion={false} />
         <nav aria-label="Основное меню">
           <NavLink
             to="/teacher"
@@ -256,6 +257,7 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
             Большие открытия.
           </span>
           <small>Ваше пространство Padma</small>
+          <small className="sidebar__version">v{APP_VERSION}</small>
         </div>
       </aside>
       <main className="workspace__main">

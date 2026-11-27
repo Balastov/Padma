@@ -61,10 +61,20 @@
   font-size: 11px;
   margin-top: 18px;
 }
+.sidebar__bottom small.sidebar__version {
+  margin-top: 8px;
+  opacity: 0.8;
+}
 /* The quote is decoration: drop it when the menu needs the height. */
 @media (max-height: 860px) {
   .sidebar__bottom {
+    padding: 12px;
+  }
+  .sidebar__bottom > :not(.sidebar__version) {
     display: none;
+  }
+  .sidebar__bottom small.sidebar__version {
+    margin-top: 0;
   }
 }
 .sidebar:after {
