@@ -67,9 +67,7 @@
 }
 .login__panel {
   padding: 36px 28px;
-  background:
-    var(--glass-fill),
-    linear-gradient(155deg, #dbeaff40, #e7e1fc40);
+  background: var(--glass-fill), linear-gradient(155deg, #dbeaff40, #e7e1fc40);
   box-shadow: var(--glass-shadow);
   border-radius: 20px;
   display: flex;
@@ -154,23 +152,24 @@
   font-weight: 500;
 }
 .login__passkey {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 4px 6px;
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+.login__passkey-button {
   width: 100%;
-  min-height: 44px;
-  margin-top: 8px;
-  padding: 8px 0;
-  font-size: 14px;
+  min-height: 52px;
+  font-weight: 500;
   color: #3453ba;
+  border-color: #3453ba55;
 }
 .login__passkey small {
-  flex-basis: 100%;
   text-align: center;
   font-size: 12px;
   color: var(--text-secondary);
+}
+.login__passkey .error {
+  margin: 4px 0 0;
 }
 .login__foot {
   text-align: center;

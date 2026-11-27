@@ -28,7 +28,7 @@ const day = (time: number) =>
  * passkeys and what to do when Quazar is unavailable (QUAZAR_SSO.md, 3.3).
  */
 export default function BackupSignIn() {
-  const { passwordDeadline } = useProviders()
+  const { passwordDeadline, passwordsClosed } = useProviders()
   const [keys, setKeys] = useState<Passkey[] | null>(null)
   const [name, setName] = useState('')
   const [error, setError] = useState('')
@@ -83,7 +83,9 @@ export default function BackupSignIn() {
         <p className="caption">
           Видят только владелец и администраторы.
           {passwordDeadline &&
-            ` Вход по паролю для аккаунтов без Квазара отключится после ${formatDeadline(passwordDeadline)}`}
+            (passwordsClosed
+              ? ` Вход по паролю отключён ${formatDeadline(passwordDeadline)}`
+              : ` Вход по паролю для аккаунтов без Квазара отключится после ${formatDeadline(passwordDeadline)}`)}
         </p>
       </header>
       <div className="glass-panel backup-sign-in__card">

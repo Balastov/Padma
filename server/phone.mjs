@@ -1,7 +1,6 @@
 // Phone numbers in E.164, the same rules as in Quazar (backend/app/core/phone.py).
-import { mkdirSync, chmodSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max'
+import { backupBefore } from './dbBackup.mjs'
 
 export const PHONE_INVALID =
   'Неверный номер телефона. Иностранный номер укажите с кодом страны, например +44 7911 123456'
@@ -68,19 +67,10 @@ export function migratePhones(db, path) {
     if (!next) unparsed.push(row)
     else if (next !== row.phone) changes.push({ ...row, next })
   }
-  if (changes.length && path !== ':memory:') {
-    const directory =
-      process.env.PADMA_BACKUP_DIR || join(dirname(path), 'backups')
-    mkdirSync(directory, { recursive: true, mode: 0o700 })
-    const backup = join(
-      directory,
-      'padma-before-phones-' +
-        new Date().toISOString().replace(/[:.]/g, '-') +
-        '.sqlite',
-    )
-    db.prepare('VACUUM INTO ?').run(backup)
-    chmodSync(backup, 0o600)
-    console.log('Резервная копия перед переводом номеров: ' + backup)
+  if (changes.length) {
+    const backup = backupBefore(db, path, 'phones')
+    if (backup)
+      console.log('Резервная копия перед переводом номеров: ' + backup)
   }
   const update = db.prepare('UPDATE users SET phone=? WHERE id=?')
   const taken = db.prepare('SELECT 1 FROM users WHERE phone=? AND id!=?')

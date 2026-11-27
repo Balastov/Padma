@@ -8,6 +8,7 @@ import {
   verifyRegistrationResponse,
 } from '@simplewebauthn/server'
 import { publicUser } from './store.mjs'
+import { backupBefore } from './dbBackup.mjs'
 
 export const LINK_TTL = 15 * 60000
 const CHALLENGE_TTL = 5 * 60000
@@ -58,6 +59,39 @@ export function initAccess(db) {
 export const passwordDeadline = (db) =>
   db.prepare(`SELECT value FROM app_meta WHERE key='passwordDeadline'`).get()
     ?.value || null
+
+/** The deadline has come: password sign-in is over (stage 3.4). */
+export const passwordsClosed = (db, now = Date.now()) => {
+  const deadline = passwordDeadline(db)
+  return Boolean(deadline) && now >= Date.parse(deadline)
+}
+
+/**
+ * Once after the deadline: all password hashes go (a backup first). An account
+ * without a password and a link is then linked by its number at the next
+ * sign-in through Quazar. Returns how many passwords were erased.
+ */
+export function erasePasswords(db, path) {
+  if (
+    !passwordsClosed(db) ||
+    db.prepare(`SELECT 1 FROM app_meta WHERE key='passwordsErased'`).get()
+  )
+    return 0
+  const { n } = db
+    .prepare(`SELECT COUNT(*) AS n FROM users WHERE password!=''`)
+    .get()
+  if (n) {
+    const backup = backupBefore(db, path, 'passwords')
+    if (backup)
+      console.log('Резервная копия перед удалением паролей: ' + backup)
+  }
+  db.prepare(`UPDATE users SET password='' WHERE password!=''`).run()
+  db.prepare(
+    `INSERT INTO app_meta (key, value) VALUES ('passwordsErased', ?)`,
+  ).run(new Date().toISOString())
+  console.log(`Вход по паролю отключён, пароли стёрты: ${n}`)
+  return n
+}
 
 /** Passkeys belong to the site name without «www.»: one key for both addresses. */
 export const rpIdOf = (origins, env = process.env) =>

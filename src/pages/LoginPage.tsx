@@ -21,7 +21,7 @@ import {
   clearQuazarResult,
   quazarMessages,
   readQuazarResult,
-  useQuazarEnabled,
+  useProviders,
 } from '../quazar'
 import { passkeyError, passkeysSupported } from '../passkeys'
 import './LoginPage.css'
@@ -52,7 +52,8 @@ export default function LoginPage({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [help, setHelp] = useState('')
-  const quazar = useQuazarEnabled()
+  const { quazar, passwordsClosed: closed } = useProviders()
+  const [keyError, setKeyError] = useState('')
   const [quazarResult] = useState(readQuazarResult)
   const [linkResult] = useState(readLinkResult)
   const [passkeys] = useState(passkeysSupported)
@@ -60,7 +61,7 @@ export default function LoginPage({
 
   async function passkeyLogin() {
     setBusy(true)
-    setError('')
+    setKeyError('')
     try {
       const optionsJSON = await api<PublicKeyCredentialRequestOptionsJSON>(
         '/auth/passkey/options',
@@ -70,7 +71,7 @@ export default function LoginPage({
       const response = await startAuthentication({ optionsJSON })
       onLogin(await api<User>('/auth/passkey', 'POST', { response }))
     } catch (e) {
-      setError(passkeyError(e, 'Не удалось войти по ключу доступа'))
+      setKeyError(passkeyError(e, 'Не удалось войти по ключу доступа'))
     } finally {
       setBusy(false)
     }
@@ -124,112 +125,117 @@ export default function LoginPage({
         </aside>
         <section className="login__panel">
           <Logo size="lg" />
-          <form onSubmit={submit} className="form-stack">
-            {useEmail ? (
+          {/* From the deadline on (stage 3.4) there is no password sign-in. */}
+          {!closed && (
+            <form onSubmit={submit} className="form-stack">
+              {useEmail ? (
+                <label className="field">
+                  <span>Email</span>
+                  <span className="input-icon">
+                    <Mail size={20} />
+                    <input
+                      required
+                      type="email"
+                      autoComplete="username"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Ваш email"
+                    />
+                  </span>
+                </label>
+              ) : (
+                <label className="field">
+                  <span>Телефон</span>
+                  <span className="input-icon">
+                    <Phone size={20} />
+                    <input
+                      required
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={(e) =>
+                        setPhone(formatPhoneInput(e.target.value))
+                      }
+                      placeholder="+7 (XXX) XXX-XX-XX"
+                    />
+                  </span>
+                  <small>Номер другой страны — с её кодом, например +44.</small>
+                </label>
+              )}
+
+              <div className="login__options">
+                <label className="login__check">
+                  <input
+                    type="checkbox"
+                    checked={loginByEmail}
+                    onChange={(e) => setLoginByEmail(e.target.checked)}
+                  />
+                  <span>Авторизация по e-mail</span>
+                </label>
+              </div>
+
               <label className="field">
-                <span>Email</span>
+                <span>Пароль</span>
                 <span className="input-icon">
-                  <Mail size={20} />
+                  <LockKeyhole size={20} />
                   <input
                     required
-                    type="email"
-                    autoComplete="username"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Ваш email"
+                    maxLength={128}
+                    type={show ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Ваш пароль"
                   />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={() => setShow(!show)}
+                    aria-label={show ? 'Скрыть пароль' : 'Показать пароль'}
+                  >
+                    {show ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
                 </span>
               </label>
-            ) : (
-              <label className="field">
-                <span>Телефон</span>
-                <span className="input-icon">
-                  <Phone size={20} />
-                  <input
-                    required
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-                    placeholder="+7 (XXX) XXX-XX-XX"
-                  />
-                </span>
-                <small>Номер другой страны — с её кодом, например +44.</small>
-              </label>
-            )}
-
-            <div className="login__options">
-              <label className="login__check">
-                <input
-                  type="checkbox"
-                  checked={loginByEmail}
-                  onChange={(e) => setLoginByEmail(e.target.checked)}
-                />
-                <span>Авторизация по e-mail</span>
-              </label>
-            </div>
-
-            <label className="field">
-              <span>Пароль</span>
-              <span className="input-icon">
-                <LockKeyhole size={20} />
-                <input
-                  required
-                  maxLength={128}
-                  type={show ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Ваш пароль"
-                />
+              <div className="login__links">
                 <button
                   type="button"
-                  className="icon-button"
-                  onClick={() => setShow(!show)}
-                  aria-label={show ? 'Скрыть пароль' : 'Показать пароль'}
+                  onClick={() =>
+                    setHelp(
+                      'Для смены пароля обратитесь к вашему учителю или администратору Padma.',
+                    )
+                  }
                 >
-                  {show ? <EyeOff size={20} /> : <Eye size={20} />}
+                  Забыли пароль?
                 </button>
-              </span>
-            </label>
-            <div className="login__links">
-              <button
-                type="button"
-                onClick={() =>
-                  setHelp(
-                    'Для смены пароля обратитесь к вашему учителю или администратору Padma.',
-                  )
-                }
-              >
-                Забыли пароль?
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHelp(
+                      'Вход по коду пока недоступен. Используйте телефон или email и пароль, выданные администратором.',
+                    )
+                  }
+                >
+                  Войти по коду
+                </button>
+              </div>
+              {help && (
+                <p className="notice" role="status">
+                  {help}
+                </p>
+              )}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              <button disabled={busy} className="button-primary login__submit">
+                {busy ? 'Входим…' : 'Войти'}
+                <ArrowRight size={20} />
               </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setHelp(
-                    'Вход по коду пока недоступен. Используйте телефон или email и пароль, выданные администратором.',
-                  )
-                }
-              >
-                Войти по коду
-              </button>
-            </div>
-            {help && (
-              <p className="notice" role="status">
-                {help}
-              </p>
-            )}
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
-            <button disabled={busy} className="button-primary login__submit">
-              {busy ? 'Входим…' : 'Войти'}
-              <ArrowRight size={20} />
-            </button>
-          </form>
+            </form>
+          )}
           {linkResult && (
             <p className="error login__quazar-result" role="alert">
               {linkResult}
@@ -242,9 +248,9 @@ export default function LoginPage({
           )}
           {quazar && (
             <div className="login__quazar">
-              <span className="login__or">или</span>
+              {!closed && <span className="login__or">или</span>}
               <a
-                className="button-secondary login__quazar-button"
+                className={`${closed ? 'button-primary' : 'button-secondary'} login__quazar-button`}
                 href="/api/auth/quazar/start"
               >
                 Войти через Квазар
@@ -258,16 +264,26 @@ export default function LoginPage({
             </div>
           )}
           {passkeys && (
-            <button
-              type="button"
-              className="login__passkey"
-              disabled={busy}
-              onClick={passkeyLogin}
-            >
-              <KeyRound size={16} />
-              Войти по ключу доступа
-              <small>для владельца и администраторов</small>
-            </button>
+            <div className="login__passkey">
+              <button
+                type="button"
+                className="button-secondary login__passkey-button"
+                disabled={busy}
+                onClick={passkeyLogin}
+              >
+                <KeyRound size={20} />
+                Войти по ключу доступа
+              </button>
+              <small>
+                Для владельца и администраторов: Touch ID, Face ID или PIN-код
+                устройства.
+              </small>
+              {keyError && (
+                <p className="error" role="alert">
+                  {keyError}
+                </p>
+              )}
+            </div>
           )}
           <p className="login__foot">
             Ваши уроки, общение и маленькие шаги

@@ -22,6 +22,7 @@ import {
   phoneStarted,
 } from '../phone'
 import { syncPushWithPreference } from '../notifications'
+import { useProviders } from '../quazar'
 import {
   DEFAULT_TIME_ZONE,
   deviceTimeZone,
@@ -207,6 +208,7 @@ function UserEditor({
     [pushWarning, setPushWarning] = useState(''),
     [helpOpen, setHelpOpen] = useState(false)
   const manager = isManager(actor)
+  const { passwordsClosed } = useProviders()
   const editable =
     profile ||
     manager ||
@@ -460,11 +462,16 @@ function UserEditor({
             <NotificationHelp open={helpOpen} onToggle={setHelpOpen} />
           )}
           {initial.quazarLinked ||
+          passwordsClosed ||
           (profile && initial.hasPassword === false) ? (
             <p className="notice">
-              {profile
-                ? 'Вы входите через Квазар, пароль не нужен.'
-                : 'Пользователь входит через Квазар, пароль не нужен.'}
+              {passwordsClosed && !initial.quazarLinked
+                ? profile
+                  ? 'Вход по паролю отключён: входите через Квазар.'
+                  : 'Вход по паролю отключён: пользователь входит через Квазар.'
+                : profile
+                  ? 'Вы входите через Квазар, пароль не нужен.'
+                  : 'Пользователь входит через Квазар, пароль не нужен.'}
             </p>
           ) : (
             <label className="field">

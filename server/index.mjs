@@ -53,7 +53,14 @@ import { initUnread, markRead, unreadSummary } from './unread.mjs'
 import { assignStudentAvatars, photoProblem, studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
 import { PHONE_INVALID } from './phone.mjs'
-import { accessRoute, initAccess, passwordDeadline, rpIdOf } from './access.mjs'
+import {
+  accessRoute,
+  erasePasswords,
+  initAccess,
+  passwordDeadline,
+  passwordsClosed,
+  rpIdOf,
+} from './access.mjs'
 import {
   initQuazar,
   quazarConfig,
@@ -76,6 +83,7 @@ const passwordValid = (value) =>
   typeof value === 'string' && value.length >= 8 && value.length <= 128
 const QUAZAR_PHONE = 'Телефон привязан к Квазару и меняется только там'
 const QUAZAR_PASSWORD = 'Аккаунт привязан к Квазару: вход только через Квазар'
+const PASSWORDS_OFF = 'Вход по паролю отключён: войдите через Квазар'
 const SELF_SIGN_UP =
   'Пользователи регистрируются сами: «Зарегистрироваться» на странице входа'
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -178,6 +186,16 @@ export function createApp({
   void issueQuietly()
   const planTimer = setInterval(issueQuietly, 6e4)
   planTimer.unref()
+  // Stage 3.4: from the deadline on, passwords are off (only with Quazar set up:
+  // a local copy without it keeps password sign-in). Hashes go once.
+  const closed = () => {
+    if (!quazar || !passwordsClosed(db)) return false
+    erasePasswords(db, dbPath)
+    return true
+  }
+  closed()
+  const passwordTimer = setInterval(closed, 6e4)
+  passwordTimer.unref()
   const cookie = (token) =>
     `padma_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 604800 : 0}${secure ? '; Secure' : ''}`
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
@@ -209,6 +227,7 @@ export function createApp({
   // Account without a password (created through Quazar) never matches.
   async function checkPassword(userId, password, req) {
     countAttempt(req.socket.remoteAddress)
+    if (closed()) return false
     if (typeof password !== 'string' || password.length > 128) return false
     const hash = db.prepare('SELECT password FROM users WHERE id=?').get(userId)
       ?.password
@@ -319,6 +338,7 @@ export function createApp({
           startSession,
           checkPassword,
           deadline: passwordDeadline(db),
+          closed: closed(),
         })
       )
         return
@@ -342,6 +362,7 @@ export function createApp({
         const data = await body(req)
         const key = req.socket.remoteAddress
         countAttempt(key)
+        if (closed()) fail(403, PASSWORDS_OFF)
         if (typeof data.password !== 'string' || data.password.length > 128)
           fail(401, 'Неверный логин или пароль')
         const email = text(data.email).toLowerCase()
@@ -445,6 +466,7 @@ export function createApp({
         const photo = studentPhoto(user.roles, rawPhoto)
         const timeZone = timeZoneOf(data, user.timeZone)
         if (data.password) {
+          if (closed()) fail(400, PASSWORDS_OFF)
           if (user.quazarLinked) fail(400, QUAZAR_PASSWORD)
           if (
             !passwordValid(data.password) ||
@@ -709,6 +731,7 @@ export function createApp({
         if (problem) fail(400, problem)
         const photo = studentPhoto(roles, data.photo || '')
         const timeZone = timeZoneOf(data, old.timeZone)
+        if (closed() && data.password) fail(400, PASSWORDS_OFF)
         if (old.quazarLinked && data.password) fail(400, QUAZAR_PASSWORD)
         if (data.password && !passwordValid(data.password))
           fail(400, 'Пароль должен содержать от 8 до 128 символов')
@@ -865,6 +888,7 @@ export function createApp({
   server.on('close', () => {
     clearInterval(purgeTimer)
     clearInterval(planTimer)
+    clearInterval(passwordTimer)
     db.close()
   })
   return { server, db, store, issuePlans }

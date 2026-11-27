@@ -141,9 +141,14 @@ export async function quazarRoute({
   startSession,
   checkPassword,
   deadline = null,
+  closed = false,
 }) {
   if (path === '/api/auth/providers' && req.method === 'GET') {
-    send(200, { quazar: Boolean(config), passwordDeadline: deadline })
+    send(200, {
+      quazar: Boolean(config),
+      passwordDeadline: deadline,
+      passwordsClosed: closed,
+    })
     return true
   }
   if (!path.startsWith('/api/auth/quazar/')) return false

@@ -9,7 +9,7 @@ export const quazarMessages: Record<string, string> = {
   expired: 'Попытка входа устарела. Начните заново.',
   failed: 'Квазар сейчас недоступен. Попробуйте позже.',
   phone_taken:
-    'В Padma уже есть аккаунт с этим номером. Войдите паролем и привяжите Квазар в профиле.',
+    'В Padma уже есть аккаунт с этим номером. Пока вход по паролю работает, войдите паролем и привяжите Квазар в профиле; иначе обратитесь к администратору.',
   archived: 'Этот аккаунт Padma закрыт. Обратитесь к администратору.',
   mismatch:
     'Номер в Квазаре не совпадает с номером в Padma. Укажите в профиле тот же номер, что в Квазаре, и повторите.',
@@ -36,8 +36,14 @@ export type Providers = {
   quazar: boolean
   /** After this moment password sign-in ends (QUAZAR_SSO.md, 3.3). */
   passwordDeadline: string | null
+  /** The deadline has come: no password sign-in (3.4). */
+  passwordsClosed: boolean
 }
-const NONE: Providers = { quazar: false, passwordDeadline: null }
+const NONE: Providers = {
+  quazar: false,
+  passwordDeadline: null,
+  passwordsClosed: false,
+}
 let providers: Promise<Providers> | null = null
 /** Sign-in settings of the server, loaded once per page. */
 export function useProviders() {

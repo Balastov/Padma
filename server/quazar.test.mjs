@@ -1,13 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
 import { createApp } from './index.mjs'
-import { hashPassword, openStore } from './store.mjs'
+import { hashPassword, openStore, tokenHash } from './store.mjs'
 import { initQuazar } from './quazar.mjs'
+import { initAccess } from './access.mjs'
 
 const ORIGIN = 'http://localhost:5173'
 const SECRET = 'test-secret'
@@ -568,6 +569,163 @@ test('linked accounts sign in again once password sign-in closes', async () => {
     assert.deepEqual(sessions(app.db), ['linked', 'plain'])
   } finally {
     app.server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('password sign-in closes at the deadline (stage 3.4)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'padma-quazar-'))
+  const dbPath = join(dir, 'test.sqlite')
+  const local = join(dir, 'local.sqlite')
+  const password = randomBytes(12).toString('hex')
+  const hash = await hashPassword(password)
+  const passed = new Date(Date.now() - 60000).toISOString()
+  for (const path of [dbPath, local]) {
+    const before = openStore(path)
+    initQuazar(before)
+    initAccess(before)
+    for (const [id, roles, phone] of [
+      ['owner', ['owner'], '+79990000001'],
+      ['anna', ['student'], '+79990000002'],
+    ])
+      before
+        .prepare(
+          'INSERT INTO users (id,name,email,phone,password,roles) VALUES (?,?,?,?,?,?)',
+        )
+        .run(id, id, `${id}@example.test`, phone, hash, JSON.stringify(roles))
+    before
+      .prepare(`UPDATE app_meta SET value=? WHERE key='passwordDeadline'`)
+      .run(passed)
+    for (const id of ['owner', 'anna'])
+      before
+        .prepare('INSERT INTO sessions VALUES (?,?,?)')
+        .run(tokenHash('token-' + id), id, Date.now() + 1e6)
+    before.close()
+  }
+  const quazar = fakeQuazar()
+  await new Promise((resolve) => quazar.server.listen(0, '127.0.0.1', resolve))
+  const quazarUrl = `http://127.0.0.1:${quazar.server.address().port}`
+  const log = console.log
+  console.log = () => {}
+  const app = createApp({
+    dbPath,
+    quazar: {
+      clientId: 'padma',
+      clientSecret: SECRET,
+      webUrl: quazarUrl,
+      apiUrl: quazarUrl + '/api',
+      padmaUrl: ORIGIN,
+      origins: [ORIGIN],
+    },
+  })
+  // Without Quazar (a local copy) passwords stay.
+  const off = createApp({ dbPath: local, quazar: null })
+  console.log = log
+  await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve))
+  await new Promise((resolve) => off.server.listen(0, '127.0.0.1', resolve))
+  const call = async (server, path, method = 'GET', body, cookie = '') => {
+    const res = await fetch(
+      `http://127.0.0.1:${server.address().port}/api${path}`,
+      {
+        method,
+        redirect: 'manual',
+        headers: {
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+          Cookie: cookie,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+    )
+    const type = res.headers.get('content-type') || ''
+    return {
+      status: res.status,
+      body: type.includes('json') ? await res.json() : null,
+      location: res.headers.get('location'),
+      cookies: res.headers.getSetCookie(),
+    }
+  }
+  const pick = (cookies, name) =>
+    cookies.find((c) => c.startsWith(name + '='))?.split(';')[0] || ''
+  try {
+    // At start: hashes are erased once, after a backup.
+    assert.equal(
+      app.db.prepare(`SELECT COUNT(*) AS n FROM users WHERE password!=''`).get()
+        .n,
+      0,
+    )
+    assert.match(
+      readdirSync(join(dir, 'backups')).join(),
+      /padma-before-passwords-/,
+    )
+    const providers = (await call(app.server, '/auth/providers')).body
+    assert.equal(providers.passwordsClosed, true)
+    const login = { email: 'owner@example.test', password }
+    const refused = await call(app.server, '/login', 'POST', login)
+    assert.equal(refused.status, 403)
+    assert.match(refused.body.error, /Квазар/)
+    // Open sessions stay; no new password can be set anywhere.
+    const anna = 'padma_session=token-anna'
+    const owner = 'padma_session=token-owner'
+    const me = (await call(app.server, '/me', 'GET', undefined, anna)).body
+    assert.equal(me.hasPassword, false)
+    assert.equal(
+      (
+        await call(
+          app.server,
+          '/profile',
+          'PATCH',
+          { ...me, password: 'new-password-1', currentPassword: password },
+          anna,
+        )
+      ).status,
+      400,
+    )
+    assert.equal(
+      (
+        await call(
+          app.server,
+          '/users/anna',
+          'PATCH',
+          { ...me, password: 'new-password-1' },
+          owner,
+        )
+      ).status,
+      400,
+    )
+    // The account without a password is taken by its confirmed number.
+    const start = await call(app.server, '/auth/quazar/start')
+    const { code, state } = quazar.authorize(
+      start.location,
+      profile('q-anna', '+79990000002'),
+    )
+    const back = await call(
+      app.server,
+      `/auth/quazar/callback?code=${code}&state=${state}`,
+      'GET',
+      undefined,
+      pick(start.cookies, 'padma_oauth'),
+    )
+    assert.equal(back.location, '/')
+    const claimed = await call(
+      app.server,
+      '/me',
+      'GET',
+      undefined,
+      pick(back.cookies, 'padma_session'),
+    )
+    assert.equal(claimed.body.id, 'anna')
+    assert.equal(claimed.body.quazarLinked, true)
+
+    assert.equal((await call(off.server, '/login', 'POST', login)).status, 200)
+    assert.equal(
+      (await call(off.server, '/auth/providers')).body.passwordsClosed,
+      false,
+    )
+  } finally {
+    app.server.close()
+    off.server.close()
+    quazar.server.close()
     rmSync(dir, { recursive: true, force: true })
   }
 })

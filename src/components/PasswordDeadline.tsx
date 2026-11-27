@@ -12,8 +12,14 @@ export default function PasswordDeadline({
   user: User
   settingsPath: string
 }) {
-  const { quazar, passwordDeadline } = useProviders()
-  if (!quazar || !passwordDeadline || user.quazarLinked || !user.hasPassword)
+  const { quazar, passwordDeadline, passwordsClosed } = useProviders()
+  if (
+    !quazar ||
+    !passwordDeadline ||
+    passwordsClosed ||
+    user.quazarLinked ||
+    !user.hasPassword
+  )
     return null
   return (
     <p className="notice password-deadline" role="status">
