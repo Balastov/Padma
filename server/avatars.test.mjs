@@ -114,7 +114,8 @@ test('students get random preset avatars, once and on save', async () => {
     // Staff may stay without a photo.
     assert.equal((await profile('teacher', '')).body.photo, '')
 
-    // New students get an avatar; the teacher can change it.
+    // Students sign up themselves (a new one gets an avatar in quazar.test.mjs);
+    // the teacher can change it.
     r = await req('/users', 'teacher', 'POST', {
       name: 'Новый',
       email: 'new@example.test',
@@ -122,10 +123,12 @@ test('students get random preset avatars, once and on save', async () => {
       teacherId: 'teacher',
       password: 'password-123',
     })
-    assert.equal(r.status, 201)
-    assert(isPresetAvatar(r.body.photo))
-    r = await req('/users/' + r.body.id, 'teacher', 'PATCH', {
-      ...r.body,
+    assert.equal(r.status, 403)
+    const other = (await req('/users', 'teacher')).body.find(
+      (u) => u.id === 'other',
+    )
+    r = await req('/users/other', 'teacher', 'PATCH', {
+      ...other,
       photo: PRESET_AVATARS[14],
     })
     assert.equal(r.status, 200)

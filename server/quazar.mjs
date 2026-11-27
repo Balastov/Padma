@@ -1,6 +1,6 @@
 // Sign-in through Quazar (quazar-msg.ru): OAuth 2.0 code + PKCE, see QUAZAR_SSO.md.
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { normalizePhone, isCompleteRuPhone } from './store.mjs'
+import { isE164 } from './phone.mjs'
 import { studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE } from './timezone.mjs'
 
@@ -169,7 +169,7 @@ export async function quazarRoute({
     [req.headers.origin, `https://${host}`, `http://${host}`].find(
       (origin) => origin && (config.origins || []).includes(origin),
     ) || config.padmaUrl
-  function begin(mode, userId, returnTo) {
+  function begin(mode, userId, returnTo, register = false) {
     const redirectUri = site + CALLBACK
     const state = random(),
       verifier = random(),
@@ -198,11 +198,15 @@ export async function quazarRoute({
           .update(verifier)
           .digest('base64url'),
         code_challenge_method: 'S256',
+        // Quazar opens its simplified sign-up «для Padma».
+        ...(register ? { prompt: 'create' } : {}),
       })
     return { url, cookie: flowCookie(binding) }
   }
   if (path === '/api/auth/quazar/start' && req.method === 'GET') {
-    const { url, cookie } = begin('login', null, '/')
+    const register =
+      new URL(req.url, 'http://localhost').searchParams.get('register') === '1'
+    const { url, cookie } = begin('login', null, '/', register)
     return redirect(url, [cookie])
   }
   if (path === '/api/auth/quazar/link' && req.method === 'POST') {
@@ -244,10 +248,10 @@ export async function quazarRoute({
       console.error('Квазар не ответил при входе', error)
     }
     if (!info) return back('failed')
-    const phone = normalizePhone(
-      typeof info.phone_number === 'string' ? info.phone_number : '',
-    )
-    if (info.phone_number_verified !== true || !isCompleteRuPhone(phone))
+    // Quazar has checked the number already: E.164 of any country is taken
+    // as it is, without a second check against the numbering data.
+    const phone = info.phone_number
+    if (info.phone_number_verified !== true || !isE164(phone))
       return back('unverified')
     const byPhone = (id) =>
       db

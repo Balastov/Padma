@@ -331,20 +331,23 @@ export default function TeacherPage({ user, onLogout, onUserChange }: Props) {
                             <BookOpen size={32} />
                           </div>
                           <h3>Здесь начнётся следующий урок</h3>
-                          <p>Добавьте ученика и выберите удобное время.</p>
-                          <button
-                            className="button-primary"
-                            onClick={() =>
-                              students.length
-                                ? create()
-                                : navigate('/teacher/students')
-                            }
-                          >
-                            <Plus size={20} />
-                            {students.length
-                              ? 'Запланировать занятие'
-                              : 'Добавить ученика'}
-                          </button>
+                          {students.length ? (
+                            <>
+                              <p>Выберите ученика и удобное время.</p>
+                              <button
+                                className="button-primary"
+                                onClick={() => create()}
+                              >
+                                <Plus size={20} />
+                                Запланировать занятие
+                              </button>
+                            </>
+                          ) : (
+                            <p>
+                              Ученики появятся, когда администратор назначит их
+                              вам.
+                            </p>
+                          )}
                         </div>
                       )}
                     </section>

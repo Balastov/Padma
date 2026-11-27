@@ -335,6 +335,9 @@ textarea {
   color: var(--text-secondary);
   line-height: 1.35;
 }
+.field small.field__warning {
+  color: #a12e40;
+}
 .link-button {
   padding: 0;
   border: 0;

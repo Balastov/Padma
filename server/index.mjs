@@ -44,8 +44,6 @@ import {
   verifyPassword,
   tokenHash,
   normalizePhone,
-  isCompleteRuPhone,
-  isValidForeignPhone,
   canChatWith,
   messageThreadKey,
   isManagerRoles,
@@ -54,6 +52,7 @@ import { loadVapidKeys, sendPushToUser } from './push.mjs'
 import { initUnread, markRead, unreadSummary } from './unread.mjs'
 import { assignStudentAvatars, photoProblem, studentPhoto } from './avatars.mjs'
 import { DEFAULT_TIME_ZONE, isTimeZone } from './timezone.mjs'
+import { PHONE_INVALID } from './phone.mjs'
 import {
   initQuazar,
   quazarConfig,
@@ -76,6 +75,8 @@ const passwordValid = (value) =>
   typeof value === 'string' && value.length >= 8 && value.length <= 128
 const QUAZAR_PHONE = 'Телефон привязан к Квазару и меняется только там'
 const QUAZAR_PASSWORD = 'Аккаунт привязан к Квазару: вход только через Квазар'
+const SELF_SIGN_UP =
+  'Пользователи регистрируются сами: «Зарегистрироваться» на странице входа'
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 export function createApp({
   dbPath = process.env.PADMA_DB || '.data/padma.sqlite',
@@ -410,20 +411,12 @@ export function createApp({
         const name = text(data.name, 80),
           surname = text(data.surname, 80),
           email = text(data.email).toLowerCase()
-        const foreignPhone = Boolean(data.foreignPhone)
-        const phone = normalizePhone(text(data.phone, 32), foreignPhone)
+        const phone = normalizePhone(text(data.phone, 32))
         const rawPhoto = data.photo || ''
         if (!name) fail(400, 'Укажите имя')
         if (email && !emailValid(email))
           fail(400, 'Укажите корректный email')
-        if (phone) {
-          if (foreignPhone) {
-            if (!isValidForeignPhone(phone))
-              fail(400, 'Укажите корректный номер телефона')
-          } else if (!isCompleteRuPhone(phone)) {
-            fail(400, 'Укажите номер РФ: +7 и 10 цифр, начиная с 9')
-          }
-        }
+        if (phone === null) fail(400, PHONE_INVALID)
         if (!email && !phone)
           fail(400, 'Укажите email или номер телефона')
         if (user.quazarLinked && phone !== user.phone) fail(400, QUAZAR_PHONE)
@@ -597,15 +590,16 @@ export function createApp({
           fail(400, 'Квазар не привязан')
         return send(200, getUser(target.id))
       }
+      if (path === '/api/users' && req.method === 'POST')
+        fail(403, SELF_SIGN_UP)
       if (
-        (path === '/api/users' && req.method === 'POST') ||
-        (/^\/api\/users\/[^/]+$/.test(path) &&
-          ['PATCH', 'DELETE'].includes(req.method))
+        /^\/api\/users\/[^/]+$/.test(path) &&
+        ['PATCH', 'DELETE'].includes(req.method)
       ) {
         if (!staff(user)) fail(403, 'Нет доступа')
-        const id = req.method === 'POST' ? randomUUID() : path.split('/').pop()
-        const old = req.method === 'POST' ? null : getUser(id)
-        if (req.method !== 'POST' && !old) fail(404, 'Пользователь не найден')
+        const id = path.split('/').pop()
+        const old = getUser(id)
+        if (!old) fail(404, 'Пользователь не найден')
         if (req.method === 'DELETE') {
           if (
             !privileged(user) ||
@@ -618,7 +612,6 @@ export function createApp({
         }
         if (
           !privileged(user) &&
-          old &&
           (!canStudent(user, old) || old.roles.some((r) => r !== 'student'))
         )
           fail(403, 'Нет доступа')
@@ -626,27 +619,16 @@ export function createApp({
         const name = text(data.name, 80),
           surname = text(data.surname, 80),
           email = text(data.email).toLowerCase()
-        const foreignPhone = Boolean(data.foreignPhone)
-        const phone = normalizePhone(text(data.phone, 32), foreignPhone)
+        const phone = normalizePhone(text(data.phone, 32))
         const roles = data.roles
         const teacherId = data.teacherId || null
         if (!name) fail(400, 'Укажите имя')
         if (email && !emailValid(email))
           fail(400, 'Укажите корректный email')
-        if (phone) {
-          if (foreignPhone) {
-            if (!isValidForeignPhone(phone))
-              fail(400, 'Укажите корректный номер телефона')
-          } else if (!isCompleteRuPhone(phone)) {
-            fail(
-              400,
-              'Укажите номер РФ: +7 и 10 цифр, начиная с 9',
-            )
-          }
-        }
+        if (phone === null) fail(400, PHONE_INVALID)
         if (!email && !phone)
           fail(400, 'Укажите email или номер телефона')
-        if (old?.quazarLinked && phone !== old.phone) fail(400, QUAZAR_PHONE)
+        if (old.quazarLinked && phone !== old.phone) fail(400, QUAZAR_PHONE)
         if (
           !Array.isArray(roles) ||
           !roles.length ||
@@ -659,17 +641,20 @@ export function createApp({
             roles[0] !== 'student' ||
             teacherId !== user.id)
         )
-          fail(403, 'Учитель может создавать только своих учеников')
+          fail(
+            403,
+            'Учитель изменяет только своих учеников; учителя назначает администратор',
+          )
         if (teacherId && !getUser(teacherId)?.roles.includes('teacher'))
           fail(400, 'Выберите действующего учителя')
         if (
-          old?.roles.includes('owner') &&
+          old.roles.includes('owner') &&
           !roles.includes('owner') &&
           users().filter((u) => u.roles.includes('owner')).length === 1
         )
           fail(400, 'Нельзя убрать последнего владельца')
         if (
-          old?.roles.includes('teacher') &&
+          old.roles.includes('teacher') &&
           !roles.includes('teacher') &&
           users().some((u) => u.teacherId === id)
         )
@@ -677,66 +662,34 @@ export function createApp({
         const problem = photoProblem(data.photo || '')
         if (problem) fail(400, problem)
         const photo = studentPhoto(roles, data.photo || '')
-        const timeZone = timeZoneOf(data, old?.timeZone)
-        if (old?.quazarLinked && data.password) fail(400, QUAZAR_PASSWORD)
-        if ((!old || data.password) && !passwordValid(data.password))
+        const timeZone = timeZoneOf(data, old.timeZone)
+        if (old.quazarLinked && data.password) fail(400, QUAZAR_PASSWORD)
+        if (data.password && !passwordValid(data.password))
           fail(400, 'Пароль должен содержать от 8 до 128 символов')
         const hash = data.password
           ? await hashPassword(data.password)
           : db.prepare('SELECT password FROM users WHERE id=?').get(id)
               ?.password
         try {
-          if (old) {
-            const notificationsEnabled = applyNotificationsFlag(user, old, data)
-            if (notificationsEnabled === undefined) {
-              db.prepare(
-                'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=? WHERE id=?',
-              ).run(
-                name,
-                surname,
-                email,
-                phone,
-                hash,
-                JSON.stringify([...new Set(roles)]),
-                teacherId,
-                photo,
-                id,
-              )
-            } else {
-              db.prepare(
-                'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=?,notificationsEnabled=? WHERE id=?',
-              ).run(
-                name,
-                surname,
-                email,
-                phone,
-                hash,
-                JSON.stringify([...new Set(roles)]),
-                teacherId,
-                photo,
-                notificationsEnabled,
-                id,
-              )
-            }
-            db.prepare('UPDATE users SET timeZone=? WHERE id=?').run(
-              timeZone,
-              id,
-            )
-            if (
-              data.password ||
-              JSON.stringify(old.roles) !== JSON.stringify(roles)
-            )
-              db.prepare('DELETE FROM sessions WHERE userId=?').run(id)
-          } else {
-            const notificationsEnabled =
-              typeof data.notificationsEnabled === 'boolean' &&
-              data.notificationsEnabled
-                ? 1
-                : 0
+          const notificationsEnabled = applyNotificationsFlag(user, old, data)
+          if (notificationsEnabled === undefined) {
             db.prepare(
-              'INSERT INTO users (id,name,surname,email,phone,password,roles,teacherId,photo,notificationsEnabled,timeZone) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+              'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=? WHERE id=?',
             ).run(
+              name,
+              surname,
+              email,
+              phone,
+              hash,
+              JSON.stringify([...new Set(roles)]),
+              teacherId,
+              photo,
               id,
+            )
+          } else {
+            db.prepare(
+              'UPDATE users SET name=?,surname=?,email=?,phone=?,password=?,roles=?,teacherId=?,photo=?,notificationsEnabled=? WHERE id=?',
+            ).run(
               name,
               surname,
               email,
@@ -746,9 +699,18 @@ export function createApp({
               teacherId,
               photo,
               notificationsEnabled,
-              timeZone,
+              id,
             )
           }
+          db.prepare('UPDATE users SET timeZone=? WHERE id=?').run(
+            timeZone,
+            id,
+          )
+          if (
+            data.password ||
+            JSON.stringify(old.roles) !== JSON.stringify(roles)
+          )
+            db.prepare('DELETE FROM sessions WHERE userId=?').run(id)
         } catch (error) {
           if (String(error).includes('UNIQUE'))
             fail(
@@ -759,7 +721,7 @@ export function createApp({
             )
           throw error
         }
-        return send(old ? 200 : 201, getUser(id))
+        return send(200, getUser(id))
       }
       if (path === '/api/chat-peers' && req.method === 'GET') {
         return send(

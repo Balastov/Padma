@@ -169,8 +169,8 @@ test('sign-in and linking through Quazar', async () => {
       cookie ?? start.flow,
     )
   }
-  async function signIn(who) {
-    const res = await request('/auth/quazar/start')
+  async function signIn(who, path = '/auth/quazar/start') {
+    const res = await request(path)
     assert.equal(res.status, 303)
     const flow = pick(res.cookies, 'padma_oauth')
     assert.match(res.cookies.join(), /SameSite=Lax/)
@@ -207,7 +207,12 @@ test('sign-in and linking through Quazar', async () => {
 
     // A new Quazar user becomes a student without a teacher and without a password.
     const users = count()
-    const created = await signIn(profile('q-new', '8 (999) 111-22-33'))
+    // Quazar sends E.164; anything else is not taken as a checked number.
+    assert.equal(
+      (await signIn(profile('q-raw', '8 (999) 111-22-33'))).location,
+      '/?quazar=unverified',
+    )
+    const created = await signIn(profile('q-new', '+79991112233'))
     assert.equal(created.status, 303)
     assert.equal(created.location, '/')
     const session = pick(created.cookies, 'padma_session')
@@ -222,6 +227,26 @@ test('sign-in and linking through Quazar', async () => {
     assert(fresh.photo)
     assert(!('quazarId' in fresh))
     assert.equal(count(), users + 1)
+    // «Зарегистрироваться» opens the simplified sign-up in Quazar.
+    const plain = await request('/auth/quazar/start')
+    assert.equal(new URL(plain.location).searchParams.get('prompt'), null)
+    const signUp = await request('/auth/quazar/start?register=1')
+    assert.equal(new URL(signUp.location).searchParams.get('prompt'), 'create')
+    // A number of another country comes from Quazar as it is.
+    const abroad = await signIn(
+      profile('q-abroad', '+491701234567', {
+        given_name: 'Ханс',
+        family_name: 'Мюллер',
+      }),
+      '/auth/quazar/start?register=1',
+    )
+    assert.equal(abroad.location, '/')
+    const hans = await me(pick(abroad.cookies, 'padma_session'))
+    assert.equal(hans.phone, '+491701234567')
+    assert.equal(hans.name, 'Ханс')
+    assert.equal(hans.surname, 'Мюллер')
+    db.prepare('DELETE FROM sessions WHERE userId=?').run(hans.id)
+    db.prepare('DELETE FROM users WHERE id=?').run(hans.id)
     assert.equal(
       (await request('/login', 'POST', { phone: '+79991112233', password: '' }))
         .status,

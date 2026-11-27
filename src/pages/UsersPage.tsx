@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Check,
   ChevronRight,
-  Plus,
   Save,
   Search,
   Upload,
@@ -17,12 +16,10 @@ import QuazarLink from '../components/QuazarLink'
 import QuazarUnlink from '../components/QuazarUnlink'
 import { PRESET_AVATARS, isPresetAvatar } from '../avatars'
 import {
-  formatForeignPhoneInput,
-  formatRuPhoneInput,
-  isCompleteRuPhone,
-  isValidForeignPhone,
-  looksLikeForeignPhone,
+  formatPhoneInput,
+  isPhoneComplete,
   normalizePhone,
+  phoneStarted,
 } from '../phone'
 import { syncPushWithPreference } from '../notifications'
 import {
@@ -47,8 +44,7 @@ export default function UsersPage({
 }: Props) {
   const [query, setQuery] = useState(''),
     [all, setAll] = useState(false),
-    [selected, setSelected] = useState(profile ? user.id : ''),
-    [adding, setAdding] = useState(false)
+    [selected, setSelected] = useState(profile ? user.id : '')
   const [notice, setNotice] = useState('')
   const filtered = users.filter(
     (u) =>
@@ -59,28 +55,11 @@ export default function UsersPage({
   )
   const current =
     users.find((u) => u.id === selected) || (profile ? user : undefined)
-  const blank: User = {
-    id: '',
-    name: '',
-    surname: '',
-    email: '',
-    phone: '+7',
-    roles: ['student'],
-    teacherId: user.roles.includes('teacher') ? user.id : null,
-    photo: '',
-    notificationsEnabled: false,
-  }
   async function saved(next: User) {
-    setAdding(false)
     setSelected(next.id)
     setNotice('Изменения сохранены')
     if (profile) onUserChange?.(next)
     await refresh()
-  }
-  function startAdding() {
-    setAdding(true)
-    setSelected('')
-    setNotice('')
   }
   return (
     <>
@@ -105,14 +84,6 @@ export default function UsersPage({
           <section className="glass-panel users-list">
             <div className="section-heading">
               <h2>{all ? 'Пользователи' : 'Список учеников'}</h2>
-              <button
-                type="button"
-                className="button-primary button-small"
-                onClick={startAdding}
-              >
-                <Plus size={18} />
-                <span>Добавить</span>
-              </button>
             </div>
             <label className="input-icon">
               <Search size={20} />
@@ -140,18 +111,20 @@ export default function UsersPage({
             <div className="users-list__items">
               {filtered.map((u) => (
                 <button
-                  className={`user-row${selected === u.id && !adding ? ' is-active' : ''}`}
+                  className={`user-row${selected === u.id ? ' is-active' : ''}`}
                   key={u.id}
                   onClick={() => {
                     setSelected(u.id)
-                    setAdding(false)
                     setNotice('')
                   }}
                 >
                   <Avatar user={u} />
                   <span>
                     <strong>{fullName(u)}</strong>
-                    <small>{u.roles.map((r) => roleNames[r]).join(', ')}</small>
+                    <small>
+                      {u.roles.map((r) => roleNames[r]).join(', ')}
+                      {u.phoneNeedsFix && ' · проверьте номер'}
+                    </small>
                   </span>
                   <ChevronRight size={18} />
                 </button>
@@ -163,29 +136,20 @@ export default function UsersPage({
                       ? 'Никого не нашли. Попробуйте другое имя.'
                       : 'Здесь появятся ваши ученики.'}
                   </p>
-                  {!query && (
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={startAdding}
-                    >
-                      Добавить первого ученика
-                    </button>
-                  )}
                 </div>
               )}
             </div>
             <p className="caption">
               {isManager(user) || user.roles.includes('teacher')
-                ? 'В чате и списках видны все пользователи. Изменять чужие профили может владелец и администратор.'
+                ? 'Новые пользователи регистрируются сами: «Зарегистрироваться» на странице входа. Учителя назначает владелец или администратор. В чате и списках видны все пользователи.'
                 : 'Здесь отображаются ваши ученики и ваш профиль.'}
             </p>
           </section>
         )}
-        {adding || current ? (
+        {current ? (
           <UserEditor
-            key={adding ? 'new' : current!.id}
-            initial={adding ? blank : current!}
+            key={current.id}
+            initial={current}
             actor={user}
             users={users}
             profile={profile}
@@ -203,9 +167,7 @@ export default function UsersPage({
             </div>
             <h2>Знакомство начинается здесь</h2>
             <p>
-              Выберите ученика из списка
-              <br />
-              или добавьте нового.
+              Выберите ученика из списка.
             </p>
           </section>
         )}
@@ -213,6 +175,11 @@ export default function UsersPage({
     </>
   )
 }
+const PHONE_HINT =
+  'Укажите полный номер. Номер другой страны — с её кодом, например +44 7911 123456'
+/** A stored number the server could not read is shown as it is, to be fixed. */
+const shownPhone = (u: User) =>
+  !u.phone ? '' : u.phoneNeedsFix ? u.phone : formatPhoneInput(u.phone)
 function UserEditor({
   initial,
   actor,
@@ -230,25 +197,15 @@ function UserEditor({
 }) {
   const [form, setForm] = useState({
       ...initial,
-      phone: initial.phone
-        ? looksLikeForeignPhone(initial.phone)
-          ? initial.phone
-          : formatRuPhoneInput(initial.phone)
-        : initial.id
-          ? ''
-          : '+7',
+      phone: shownPhone(initial),
       password: '',
       currentPassword: '',
     }),
-    [foreignPhone, setForeignPhone] = useState(
-      looksLikeForeignPhone(initial.phone || ''),
-    ),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [confirm, setConfirm] = useState(false),
     [pushWarning, setPushWarning] = useState(''),
     [helpOpen, setHelpOpen] = useState(false)
-  const editorRef = useRef<HTMLElement>(null)
   const manager = isManager(actor)
   const editable =
     profile ||
@@ -262,36 +219,9 @@ function UserEditor({
   const device = deviceTimeZone()
   const field = (key: string, value: unknown) =>
     setForm((prev) => ({ ...prev, [key]: value }))
-  const phoneReady = foreignPhone
-    ? isValidForeignPhone(form.phone || '')
-    : isCompleteRuPhone(form.phone || '')
-  const phoneStarted =
-    foreignPhone
-      ? Boolean((form.phone || '').replace(/\D/g, '').length)
-      : Boolean((form.phone || '').replace(/\D/g, '').replace(/^7/, '').length)
+  const phoneReady = isPhoneComplete(form.phone || '')
+  const phoneTyped = phoneStarted(form.phone || '')
   const emailRequired = !phoneReady
-  useEffect(() => {
-    if (!initial.id) {
-      editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }, [initial.id])
-  function onPhoneChange(value: string) {
-    field(
-      'phone',
-      foreignPhone ? formatForeignPhoneInput(value) : formatRuPhoneInput(value),
-    )
-  }
-  function onForeignToggle(checked: boolean) {
-    setForeignPhone(checked)
-    if (checked) {
-      field(
-        'phone',
-        formatForeignPhoneInput((form.phone || '').replace(/\D/g, '') || ''),
-      )
-    } else {
-      field('phone', formatRuPhoneInput(form.phone || '7'))
-    }
-  }
   function emailLooksValid(value: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
   }
@@ -305,7 +235,7 @@ function UserEditor({
     }
     if (!email && !phoneReady) {
       setError(
-        phoneStarted
+        phoneTyped
           ? 'Укажите полный номер телефона или email'
           : 'Укажите email или полный номер телефона',
       )
@@ -315,16 +245,8 @@ function UserEditor({
       setError('Укажите корректный email')
       return
     }
-    if (!foreignPhone && phoneStarted && !phoneReady) {
-      setError('Номер РФ: +7 и 10 цифр, начиная с 9')
-      return
-    }
-    if (foreignPhone && phoneStarted && !phoneReady) {
-      setError('Укажите номер: только цифры, можно с + в начале')
-      return
-    }
-    if (!initial.id && (!form.password || form.password.length < 8)) {
-      setError('Пароль должен содержать от 8 до 128 символов')
+    if (phoneTyped && !phoneReady) {
+      setError(PHONE_HINT)
       return
     }
     if (form.password && form.password.length < 8) {
@@ -346,14 +268,11 @@ function UserEditor({
         name: form.name.trim(),
         surname: (form.surname || '').trim(),
         email,
-        phone: phoneReady
-          ? normalizePhone(form.phone || '', foreignPhone)
-          : '',
-        foreignPhone,
+        phone: phoneReady ? normalizePhone(form.phone || '') : '',
       }
       const next = await api<User>(
-        profile ? '/profile' : '/users' + (initial.id ? '/' + initial.id : ''),
-        initial.id ? 'PATCH' : 'POST',
+        profile ? '/profile' : '/users/' + initial.id,
+        'PATCH',
         payload,
       )
       if (profile && form.password) {
@@ -377,15 +296,10 @@ function UserEditor({
       await onSaved(next)
       setForm({
         ...next,
-        phone: next.phone
-          ? looksLikeForeignPhone(next.phone)
-            ? next.phone
-            : formatRuPhoneInput(next.phone)
-          : '+7',
+        phone: shownPhone(next),
         password: '',
         currentPassword: '',
       })
-      setForeignPhone(looksLikeForeignPhone(next.phone || ''))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -421,11 +335,11 @@ function UserEditor({
     reader.readAsDataURL(file)
   }
   return (
-    <section className="glass-panel user-editor" ref={editorRef}>
+    <section className="glass-panel user-editor">
       <div className="user-editor__head">
         <Avatar user={form} large />
         <div>
-          <h2>{initial.id ? fullName(form) : 'Новый ученик'}</h2>
+          <h2>{fullName(form)}</h2>
           <p>{form.roles.map((r) => roleNames[r]).join(' · ')}</p>
         </div>
       </div>
@@ -476,32 +390,21 @@ function UserEditor({
               inputMode="tel"
               value={form.phone || ''}
               autoComplete="off"
-              placeholder={
-                foreignPhone ? '+ и цифры' : '+7 (9XX) XXX-XX-XX'
-              }
+              placeholder="+7 (XXX) XXX-XX-XX"
               readOnly={initial.quazarLinked}
-              onChange={(e) => onPhoneChange(e.target.value)}
+              onChange={(e) => field('phone', formatPhoneInput(e.target.value))}
             />
             <small>
               {initial.quazarLinked
                 ? 'Подтверждён в Квазаре и меняется только там.'
-                : foreignPhone
-                  ? 'Можно войти по номеру. Только цифры, можно с +.'
-                  : 'Формат РФ: +7 и 10 цифр, начиная с 9. Можно войти по номеру.'}
+                : 'Можно войти по номеру. Номер другой страны — с её кодом, например +44.'}
             </small>
+            {initial.phoneNeedsFix && (
+              <small className="field__warning">
+                Номер не распознан. Укажите его полностью, с кодом страны.
+              </small>
+            )}
           </label>
-          {!initial.quazarLinked && (
-            <label className="field field--check">
-              <span className="field__check">
-                <input
-                  type="checkbox"
-                  checked={foreignPhone}
-                  onChange={(e) => onForeignToggle(e.target.checked)}
-                />
-                У меня иностранный номер телефона
-              </span>
-            </label>
-          )}
           {form.roles.includes('student') && (
             <label className="field">
               <span>Часовой пояс</span>
@@ -565,7 +468,7 @@ function UserEditor({
             </p>
           ) : (
             <label className="field">
-              <span>{initial.id ? 'Новый пароль' : 'Пароль *'}</span>
+              <span>Новый пароль</span>
               <input
                 type="password"
                 minLength={8}
@@ -573,17 +476,9 @@ function UserEditor({
                 autoComplete="new-password"
                 value={form.password}
                 onChange={(e) => field('password', e.target.value)}
-                placeholder={
-                  initial.id
-                    ? 'Оставьте пустым, чтобы сохранить текущий'
-                    : 'Не менее 8 символов'
-                }
+                placeholder="Оставьте пустым, чтобы сохранить текущий"
               />
-              <small>
-                {initial.id
-                  ? 'Смена пароля завершит активные сеансы пользователя.'
-                  : 'Передайте пароль ученику лично.'}
-              </small>
+              <small>Смена пароля завершит активные сеансы пользователя.</small>
             </label>
           )}
           {profile && form.password && (
@@ -705,17 +600,10 @@ function UserEditor({
               onClick={() => {
                 setForm({
                   ...initial,
-                  phone: initial.phone
-                    ? looksLikeForeignPhone(initial.phone)
-                      ? initial.phone
-                      : formatRuPhoneInput(initial.phone)
-                    : initial.id
-                      ? ''
-                      : '+7',
+                  phone: shownPhone(initial),
                   password: '',
                   currentPassword: '',
                 })
-                setForeignPhone(looksLikeForeignPhone(initial.phone || ''))
                 setError('')
               }}
             >
@@ -734,7 +622,6 @@ function UserEditor({
         <QuazarUnlink key={initial.id} user={initial} onDone={onSaved} />
       )}
       {manager &&
-        initial.id &&
         initial.roles.every((r) => r === 'student' || r === 'guest') && (
           <div className="archive-area">
             {confirm ? (

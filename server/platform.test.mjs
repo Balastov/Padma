@@ -184,20 +184,42 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     assert.equal(ownerProfile.status, 200)
     assert.equal(ownerProfile.body.phone, '+79001112233')
     assert.deepEqual(ownerProfile.body.roles.sort(), ['owner', 'teacher'])
-    const created = await request(
-      '/users',
-      'POST',
-      {
-        name: 'Новый',
-        surname: 'Ученик',
-        email: 'new@example.test',
-        password,
-        roles: ['student'],
-        teacherId: 'teacher',
-      },
-      teacher,
+    // Nobody creates accounts: people sign up through Quazar.
+    for (const who of [teacher, owner])
+      assert.equal(
+        (
+          await request(
+            '/users',
+            'POST',
+            {
+              name: 'Новый',
+              surname: 'Ученик',
+              email: 'new@example.test',
+              password,
+              roles: ['student'],
+              teacherId: 'teacher',
+            },
+            who,
+          )
+        ).status,
+        403,
+      )
+    db.prepare(
+      'INSERT INTO users (id,name,surname,email,password,roles,teacherId) VALUES (?,?,?,?,?,?,?)',
+    ).run(
+      'newbie',
+      'Новый',
+      'Ученик',
+      'new@example.test',
+      hash,
+      JSON.stringify(['student']),
+      'teacher',
     )
-    assert.equal(created.status, 201)
+    const created = {
+      body: (await request('/users', 'GET', undefined, teacher)).body.find(
+        (u) => u.id === 'newbie',
+      ),
+    }
     assert.equal(created.body.timeZone, 'Europe/Moscow')
     const studentProfile = {
       name: 'student',
@@ -240,101 +262,71 @@ test('authentication, permissions, persistence, scheduling and chat', async () =
     )
     assert.equal(teacherZoned.status, 200)
     assert.equal(teacherZoned.body.timeZone, 'Asia/Vladivostok')
-    const phoneOnly = await request(
-      '/users',
-      'POST',
-      {
-        name: 'Телефон',
-        surname: 'Только',
-        email: '',
-        phone: '+7 (901) 234-56-78',
-        password: 'password',
-        roles: ['student'],
-        teacherId: 'teacher',
-      },
-      teacher,
-    )
-    assert.equal(phoneOnly.status, 201)
+    // The teacher edits own students; numbers are stored in E.164.
+    const edit = (data, who = teacher) =>
+      request(
+        '/users/newbie',
+        'PATCH',
+        { ...created.body, ...data, roles: ['student'], teacherId: 'teacher' },
+        who,
+      )
+    const phoneOnly = await edit({ email: '', phone: '+7 (901) 234-56-78' })
+    assert.equal(phoneOnly.status, 200)
     assert.equal(phoneOnly.body.email, '')
     assert.equal(phoneOnly.body.phone, '+79012345678')
     assert.equal(
       (
         await request('/login', 'POST', {
-          phone: '9012345678',
-          password: 'password',
+          phone: '8 901 234-56-78',
+          password,
         })
       ).status,
       200,
     )
+    const abroad = await edit({ email: '', phone: '+44 7911 123456' })
+    assert.equal(abroad.status, 200)
+    assert.equal(abroad.body.phone, '+447911123456')
+    assert.equal(abroad.body.phoneNeedsFix, false)
     assert.equal(
-      (
-        await request(
-          '/users',
-          'POST',
-          {
-            name: 'Короткий',
-            email: 'short@example.test',
-            password: 'short',
-            roles: ['student'],
-            teacherId: 'teacher',
-          },
-          teacher,
-        )
-      ).status,
-      400,
+      (await request('/login', 'POST', { phone: '00447911123456', password }))
+        .status,
+      200,
     )
+    // +7 is taken by length, as in Quazar (Kazakhstan too).
     assert.equal(
-      (
-        await request(
-          '/users',
-          'POST',
-          {
-            name: 'Без контакта',
-            email: '',
-            phone: '',
-            password: 'password',
-            roles: ['student'],
-            teacherId: 'teacher',
-          },
-          teacher,
-        )
-      ).status,
-      400,
+      (await edit({ phone: '+7 701 234 56 78' })).body.phone,
+      '+77012345678',
     )
+    for (const phone of ['+44 12', '+999 123 456 789', '12345'])
+      assert.equal((await edit({ phone })).status, 400)
+    assert.equal((await edit({ password: 'short' })).status, 400)
+    assert.equal((await edit({ email: '', phone: '' })).status, 400)
+    // A teacher neither raises roles nor hands the student to another teacher.
     assert.equal(
       (
         await request(
-          '/users',
-          'POST',
-          {
-            name: 'Не с девятки',
-            email: '',
-            phone: '+7 (801) 234-56-78',
-            password: 'password',
-            roles: ['student'],
-            teacherId: 'teacher',
-          },
-          teacher,
-        )
-      ).status,
-      400,
-    )
-    assert.equal(
-      (
-        await request(
-          '/users',
-          'POST',
-          {
-            name: 'Escalation',
-            email: 'bad@example.test',
-            password,
-            roles: ['owner'],
-            teacherId: 'teacher',
-          },
+          '/users/newbie',
+          'PATCH',
+          { ...created.body, roles: ['owner'], teacherId: 'teacher' },
           teacher,
         )
       ).status,
       403,
+    )
+    assert.equal(
+      (
+        await request(
+          '/users/newbie',
+          'PATCH',
+          { ...created.body, roles: ['student'], teacherId: 'other' },
+          teacher,
+        )
+      ).status,
+      403,
+    )
+    assert.equal(
+      (await edit({ email: 'new@example.test', phone: '' })).status,
+      200,
     )
     assert.equal(
       (await request('/users/' + created.body.id, 'DELETE', {}, teacher))

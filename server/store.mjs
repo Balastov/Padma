@@ -8,6 +8,9 @@ import {
   createHash,
 } from 'node:crypto'
 import { promisify } from 'node:util'
+import { migratePhones, phoneNeedsFix } from './phone.mjs'
+
+export { normalizePhone } from './phone.mjs'
 
 const scrypt = promisify(scryptCallback)
 export const ROLES = ['owner', 'admin', 'teacher', 'student', 'guest']
@@ -68,6 +71,7 @@ export function openStore(path) {
     `CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique
      ON users(phone) WHERE phone != ''`,
   )
+  migratePhones(db, path)
   const messageColumns = db.prepare('PRAGMA table_info(messages)').all()
   if (!messageColumns.some((column) => column.name === 'threadKey')) {
     db.exec(`ALTER TABLE messages ADD COLUMN threadKey TEXT NOT NULL DEFAULT ''`)
@@ -125,32 +129,6 @@ function migrateEmailUniqueness(db) {
   `)
   db.exec('PRAGMA foreign_keys=ON')
 }
-/** Normalize phone for storage and login. RU uses last 10 digits. */
-export function normalizePhone(value, foreign = false) {
-  const trimmed = typeof value === 'string' ? value.trim() : ''
-  if (!trimmed) return ''
-  const hasPlus = trimmed.startsWith('+')
-  const digits = trimmed.replace(/\D/g, '')
-  if (!digits) return ''
-  if (foreign) return hasPlus ? `+${digits}` : digits
-  const national = digits.slice(-10)
-  const looksRu =
-    (digits.startsWith('7') && digits.length >= 11) ||
-    (digits.startsWith('8') && digits.length >= 11) ||
-    (digits.length === 10 && digits.startsWith('9')) ||
-    (hasPlus && digits.startsWith('7')) ||
-    (!hasPlus && digits.startsWith('9'))
-  if (!looksRu && hasPlus) return `+${digits}`
-  if (!looksRu) return digits
-  return national ? `+7${national}` : ''
-}
-export function isCompleteRuPhone(value) {
-  return /^\+79\d{9}$/.test(normalizePhone(value, false))
-}
-export function isValidForeignPhone(value) {
-  const normalized = normalizePhone(value, true)
-  return /^\+?\d{8,15}$/.test(normalized)
-}
 export function publicUser(row) {
   if (!row) return null
   const {
@@ -165,6 +143,7 @@ export function publicUser(row) {
     notificationsEnabled: Boolean(user.notificationsEnabled),
     quazarLinked: Boolean(quazarId),
     hasPassword: Boolean(password),
+    phoneNeedsFix: phoneNeedsFix(user.phone),
   }
 }
 export const isManagerRoles = (roles) =>

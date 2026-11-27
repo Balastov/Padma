@@ -17,6 +17,8 @@ export type User = {
   quazarLinked?: boolean
   /** False for accounts created through Quazar. */
   hasPassword?: boolean
+  /** The stored number is not in E.164: the administrator fixes it. */
+  phoneNeedsFix?: boolean
 }
 export type Teacher = Pick<User, 'id' | 'name' | 'surname' | 'photo'>
 export type LessonStatus = 'scheduled' | 'cancelled' | 'noshow'

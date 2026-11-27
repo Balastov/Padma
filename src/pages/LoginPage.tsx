@@ -6,13 +6,7 @@ import type { User } from '../api'
 import Logo from '../components/Logo'
 import loginPortrait from '../assets/login-portrait.webp'
 import loginPortraitSmall from '../assets/login-portrait-640.webp'
-import {
-  formatForeignPhoneInput,
-  formatRuPhoneInput,
-  isCompleteRuPhone,
-  isValidForeignPhone,
-  normalizePhone,
-} from '../phone'
+import { formatPhoneInput, isPhoneComplete, normalizePhone } from '../phone'
 import {
   clearQuazarResult,
   quazarMessages,
@@ -31,7 +25,6 @@ export default function LoginPage({
   onLogin: (user: User) => void
 }) {
   const [show, setShow] = useState(false)
-  const [foreignPhone, setForeignPhone] = useState(false)
   const [loginByEmail, setLoginByEmail] = useState(false)
   const [phone, setPhone] = useState('+7')
   const [email, setEmail] = useState('')
@@ -45,21 +38,6 @@ export default function LoginPage({
 
   const useEmail = loginByEmail
 
-  function onPhoneChange(value: string) {
-    setPhone(
-      foreignPhone ? formatForeignPhoneInput(value) : formatRuPhoneInput(value),
-    )
-  }
-
-  function onForeignToggle(checked: boolean) {
-    setForeignPhone(checked)
-    if (checked) {
-      setPhone(formatForeignPhoneInput(phone.replace(/\D/g, '') || ''))
-    } else {
-      setPhone(formatRuPhoneInput(phone || '7'))
-    }
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
@@ -69,26 +47,13 @@ export default function LoginPage({
         onLogin(await api<User>('/login', 'POST', { email, password }))
         return
       }
-      if (foreignPhone) {
-        if (!isValidForeignPhone(phone)) {
-          setError('Укажите номер: только цифры, можно с + в начале')
-          return
-        }
-        onLogin(
-          await api<User>('/login', 'POST', {
-            phone: normalizePhone(phone, true),
-            password,
-          }),
-        )
-        return
-      }
-      if (!isCompleteRuPhone(phone)) {
+      if (!isPhoneComplete(phone)) {
         setError('Укажите полный номер телефона')
         return
       }
       onLogin(
         await api<User>('/login', 'POST', {
-          phone: normalizePhone(phone, false),
+          phone: normalizePhone(phone),
           password,
         }),
       )
@@ -146,24 +111,15 @@ export default function LoginPage({
                     inputMode="tel"
                     autoComplete="tel"
                     value={phone}
-                    onChange={(e) => onPhoneChange(e.target.value)}
-                    placeholder={
-                      foreignPhone ? '+ и цифры' : '+7 (9XX) XXX-XX-XX'
-                    }
+                    onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                    placeholder="+7 (XXX) XXX-XX-XX"
                   />
                 </span>
+                <small>Номер другой страны — с её кодом, например +44.</small>
               </label>
             )}
 
             <div className="login__options">
-              <label className="login__check">
-                <input
-                  type="checkbox"
-                  checked={foreignPhone}
-                  onChange={(e) => onForeignToggle(e.target.checked)}
-                />
-                <span>У меня иностранный номер телефона</span>
-              </label>
               <label className="login__check">
                 <input
                   type="checkbox"
@@ -248,6 +204,12 @@ export default function LoginPage({
               >
                 Войти через Квазар
               </a>
+              <p className="login__sign-up">
+                Впервые в Padma?{' '}
+                <a href="/api/auth/quazar/start?register=1">
+                  Зарегистрироваться
+                </a>
+              </p>
             </div>
           )}
           <p className="login__foot">
